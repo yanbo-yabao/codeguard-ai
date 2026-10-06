@@ -20,6 +20,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { start } = require('../src/server');
+const { cacheControlFor } = require('../src/core/http/static-files');
 
 /** 启动一次测试用服务，返回请求助手 */
 async function withServer(run) {
@@ -284,7 +285,22 @@ test('静态资源：首页与前端资源可正常访问，且带缓存头', as
     assert.ok(etag, '静态资源应带 ETag');
     const cached = await request('/assets/style.css', { headers: { 'If-None-Match': etag } });
     assert.equal(cached.status, 304);
+
+    // 回归防线：页面 / 脚本 / 样式必须逐次回源协商（no-cache）。
+    // 否则浏览器会出现「新页面 + 旧脚本」，新功能按钮点了没有任何反应。
+    assert.equal(index.headers.get('cache-control'), 'no-cache');
+    assert.equal(script.headers.get('cache-control'), 'no-cache');
+    assert.equal(stylesheet.headers.get('cache-control'), 'no-cache');
   });
+});
+
+test('缓存策略：文本资源必须回源协商，二进制资源可本地长缓存', () => {
+  assert.equal(cacheControlFor('app.js'), 'no-cache');
+  assert.equal(cacheControlFor('style.css'), 'no-cache');
+  assert.equal(cacheControlFor('index.html'), 'no-cache');
+  assert.equal(cacheControlFor('data.json'), 'no-cache');
+  assert.match(cacheControlFor('logo.png'), /^public, max-age=\d+$/);
+  assert.match(cacheControlFor('icon.woff2'), /^public, max-age=\d+$/);
 });
 
 test('安全响应头与请求追踪 ID 已启用', async () => {

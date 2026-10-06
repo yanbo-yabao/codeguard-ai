@@ -69,6 +69,30 @@ function resolveStaticPath(rootDir, urlPath) {
 }
 
 /**
+ * 长缓存白名单：这类资源内容稳定、体积较大，可按本地缓存直接复用。
+ * 其余资源（html / js / css / json / md）一律 no-cache —— 必须回源用 ETag 协商。
+ *
+ * 为什么不能用 max-age 缓存脚本：曾出现「新页面 + 旧脚本」的组合 ——
+ * 浏览器缓存了旧 app.js，新加的按钮虽然在，但点击事件无处绑定，表现为「点了没反应」。
+ * 对本地工具而言，304 协商几乎零成本，因此优先级是「永远正确」而不是「少一次请求」。
+ */
+const LONG_CACHE_EXTENSIONS = new Set([
+  '.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico',
+  '.woff', '.woff2', '.ttf',
+]);
+
+/**
+ * 生成 Cache-Control 头
+ * @param {string} filePath 文件路径
+ * @returns {string} Cache-Control 值
+ */
+function cacheControlFor(filePath) {
+  return LONG_CACHE_EXTENSIONS.has(path.extname(filePath).toLowerCase())
+    ? 'public, max-age=86400'
+    : 'no-cache';
+}
+
+/**
  * 发送静态文件
  * @param {object} ctx 请求上下文
  * @param {string} rootDir 静态根目录
@@ -93,7 +117,7 @@ function serveStatic(ctx, rootDir) {
     'Content-Type': guessMimeType(filePath),
     'Content-Length': stat.size,
     ETag: etag,
-    'Cache-Control': filePath.endsWith('.html') ? 'no-cache' : 'public, max-age=3600',
+    'Cache-Control': cacheControlFor(filePath),
     'X-Request-Id': ctx.requestId,
   });
   ctx.responded = true;
@@ -104,4 +128,4 @@ function serveStatic(ctx, rootDir) {
   return true;
 }
 
-module.exports = { serveStatic, resolveStaticPath, guessMimeType, MIME_TYPES };
+module.exports = { serveStatic, resolveStaticPath, guessMimeType, cacheControlFor, MIME_TYPES };
