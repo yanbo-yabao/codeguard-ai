@@ -12,6 +12,7 @@ const logger = require('./core/logger');
 const { createHttpServer } = require('./core/http/app');
 const { buildRoutes } = require('./routes');
 const { store } = require('./core/storage');
+const settingsStore = require('./core/settings-store');
 
 const log = logger.child('server');
 
@@ -53,6 +54,8 @@ function printBanner(info) {
  */
 async function start(options = {}) {
   store.init();
+  // 应用网页「设置」中保存的大模型配置（data/settings.json），优先级高于 .env
+  settingsStore.apply();
 
   const { router, service } = buildRoutes();
   const server = createHttpServer({ router });

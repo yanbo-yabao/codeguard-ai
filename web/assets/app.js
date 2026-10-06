@@ -73,6 +73,18 @@
     get: (id) => api.request(`/api/reviews/${id}`),
     remove: (id) => api.request(`/api/reviews/${id}`, { method: 'DELETE' }),
     reportUrl: (id, format) => `/api/reviews/${id}/report?format=${format}`,
+    settings: () => api.request('/api/settings'),
+    saveSettings: (payload) => api.request('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+    testSettings: (payload) => api.request('/api/settings/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+    resetSettings: () => api.request('/api/settings', { method: 'DELETE' }),
   };
 
   /* ------------------------------ 初始化 ------------------------------ */
@@ -602,6 +614,154 @@
     }
   }
 
+  /* ------------------------------ 大模型设置面板 ------------------------------ */
+  /** 最近一次设置快照（用于供应商默认值回填） */
+  let settingsSnapshot = null;
+
+  /** 依据后端快照渲染设置面板 */
+  function renderSettingsPanel(snapshot) {
+    settingsSnapshot = snapshot;
+    const llm = snapshot.llm;
+
+    const select = $('#settings-provider');
+    select.innerHTML = (snapshot.providers || [])
+      .map((item) => `<option value="${escapeHtml(item.key)}">${escapeHtml(item.label)}</option>`)
+      .join('');
+    select.value = snapshot.overrides.provider || llm.provider;
+
+    $('#settings-baseurl').value = snapshot.overrides.baseUrl || '';
+    $('#settings-model').value = llm.model || '';
+    $('#settings-apikey').value = '';
+    $('#settings-apikey').disabled = llm.requiresKey === false;
+
+    const sourceLabel =
+      llm.apiKeySource === 'settings' ? '页面设置' : llm.apiKeySource === 'env' ? '.env 文件' : '未配置';
+    const status = $('#settings-status');
+    status.innerHTML = llm.available
+      ? `当前生效：<b>${escapeHtml(llm.providerLabel)} / ${escapeHtml(llm.model)}</b><br>` +
+        `密钥来源：${sourceLabel}${llm.apiKeyMasked ? `（${escapeHtml(llm.apiKeyMasked)}）` : ''}`
+      : '当前<b>未配置大模型</b>，仅有 41 条内置规则生效（离线可用）。<br>填写密钥后即可启用 AI 语义评审。';
+    status.className = `modal-status ${llm.available ? 'ok' : 'warn'}`;
+
+    $('#settings-key-hint').textContent = snapshot.overrides.hasApiKey
+      ? '已保存密钥；留空则不修改'
+      : llm.apiKey
+        ? '来自 .env；留空则不修改'
+        : '';
+  }
+
+  /** 切换供应商时回填该供应商的默认地址与模型 */
+  function applyProviderDefaults() {
+    const preset = (settingsSnapshot?.providers || []).find((p) => p.key === $('#settings-provider').value);
+    if (!preset) return;
+    if (preset.modelHint) $('#settings-model').value = preset.modelHint;
+    $('#settings-baseurl').value = preset.baseUrlHint || '';
+    const needsKey = preset.needsKey !== false;
+    $('#settings-apikey').disabled = !needsKey;
+    $('#settings-apikey').placeholder = needsKey ? '粘贴你的密钥（留空表示不修改）' : '该供应商无需密钥';
+  }
+
+  /** 保存设置后刷新顶栏徽标与页脚 */
+  async function refreshEnvBadges() {
+    try {
+      const [config, rules, health] = await Promise.all([
+        api.meta('config'),
+        api.meta('rules'),
+        api.meta('health'),
+      ]);
+      state.config = config;
+      state.meta.rules = rules.rules || [];
+      renderEnvBadges(config, rules, health);
+      renderFooter(config);
+    } catch {
+      /* 徽标刷新失败不影响主流程 */
+    }
+  }
+
+  async function openSettings() {
+    $('#settings-mask').classList.remove('hidden');
+    $('#settings-status').textContent = '读取中…';
+    $('#settings-note').textContent = '';
+    try {
+      renderSettingsPanel(await api.settings());
+    } catch (error) {
+      $('#settings-status').textContent = `读取设置失败：${error.message}`;
+    }
+  }
+
+  function closeSettings() {
+    $('#settings-mask').classList.add('hidden');
+    $('#settings-note').textContent = '';
+  }
+
+  /** 收集表单值（apiKey 为空串表示不修改） */
+  function collectSettings() {
+    return {
+      provider: $('#settings-provider').value,
+      model: $('#settings-model').value.trim(),
+      baseUrl: $('#settings-baseurl').value.trim(),
+      apiKey: $('#settings-apikey').value,
+    };
+  }
+
+  async function saveSettings() {
+    const note = $('#settings-note');
+    note.textContent = '保存中…';
+    try {
+      const snapshot = await api.saveSettings(collectSettings());
+      renderSettingsPanel(snapshot);
+      note.textContent = '✓ 已保存并立即生效';
+      toast('大模型设置已保存并生效');
+      await refreshEnvBadges();
+    } catch (error) {
+      note.textContent = '';
+      toast(`保存失败：${error.message}`, true);
+    }
+  }
+
+  async function testSettings() {
+    const note = $('#settings-note');
+    note.textContent = '测试中…';
+    try {
+      const result = await api.testSettings(collectSettings());
+      note.textContent = result.ok ? `✓ 连接成功（${result.latencyMs} ms）` : `✗ ${result.message}`;
+      toast(result.ok ? '连接成功' : `连接失败：${result.message}`, !result.ok);
+    } catch (error) {
+      note.textContent = '';
+      toast(`测试失败：${error.message}`, true);
+    }
+  }
+
+  async function resetSettings() {
+    const note = $('#settings-note');
+    note.textContent = '清除中…';
+    try {
+      const snapshot = await api.resetSettings();
+      renderSettingsPanel(snapshot);
+      note.textContent = '✓ 已清除，回到 .env 默认值';
+      toast('已清除页面设置');
+      await refreshEnvBadges();
+    } catch (error) {
+      note.textContent = '';
+      toast(`清除失败：${error.message}`, true);
+    }
+  }
+
+  function initSettings() {
+    $('#btn-settings').addEventListener('click', openSettings);
+    $('#btn-settings-close').addEventListener('click', closeSettings);
+    $('#settings-mask').addEventListener('click', (event) => {
+      if (event.target === $('#settings-mask')) closeSettings();
+    });
+    $('#settings-provider').addEventListener('change', applyProviderDefaults);
+    $('#btn-settings-save').addEventListener('click', saveSettings);
+    $('#btn-settings-test').addEventListener('click', testSettings);
+    $('#btn-settings-reset').addEventListener('click', resetSettings);
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && !$('#settings-mask').classList.contains('hidden')) closeSettings();
+    });
+  }
+
   /* ------------------------------ 事件绑定 ------------------------------ */
   function bindEvents() {
     $('#input-code').addEventListener('input', updateCodeStats);
@@ -647,6 +807,7 @@
     setupViewTabs();
     setupUpload();
     bindEvents();
+    initSettings();
     updateCodeStats();
     bootstrap();
   });

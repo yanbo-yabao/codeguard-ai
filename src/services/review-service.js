@@ -84,10 +84,27 @@ class ReviewService {
    * @param {object} [options.store] 存储实例
    */
   constructor(options = {}) {
+    /** 显式注入的客户端（测试场景），一旦注入则 rebuildLlm 不覆盖 */
+    this.injectedClient = options.client || null;
     this.client = options.client || new LlmClient();
     this.reviewAgent = new ReviewAgent({ client: this.client });
     this.fixAgent = new FixAgent({ client: this.client });
     this.store = options.store || store;
+  }
+
+  /**
+   * 用当前配置重建大模型客户端与两个 Agent
+   * -------------------------------------------------------------------------
+   * 网页「设置」面板保存新密钥 / 新模型后调用，使改动立即生效、无需重启服务。
+   * 若客户端是构造时显式注入的（单元测试），则保持不变。
+   * @returns {import('../agents/llm-client').LlmClient} 当前生效的客户端
+   */
+  rebuildLlm() {
+    if (this.injectedClient) return this.client;
+    this.client = new LlmClient();
+    this.reviewAgent = new ReviewAgent({ client: this.client });
+    this.fixAgent = new FixAgent({ client: this.client });
+    return this.client;
   }
 
   /**

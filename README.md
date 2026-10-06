@@ -10,7 +10,7 @@
 
 ![依赖](https://img.shields.io/badge/%E8%BF%90%E8%A1%8C%E6%97%B6%E4%BE%9D%E8%B5%96-0-2f81f7)
 
-![测试](https://img.shields.io/badge/%E5%8D%95%E5%85%83%E6%B5%8B%E8%AF%95-98%20%E9%80%9A%E8%BF%87-2da44e)
+![测试](https://img.shields.io/badge/%E5%8D%95%E5%85%83%E6%B5%8B%E8%AF%95-107%20%E9%80%9A%E8%BF%87-2da44e)
 
 ![规则](https://img.shields.io/badge/%E5%AE%A1%E6%9F%A5%E8%A7%84%E5%88%99-41%20%E6%9D%A1-a371f7)
 
@@ -71,7 +71,8 @@ CodeGuard AI 把代码评审拆解为**可并行的两件事**，各自发挥所
 | 📊 **可视化评分报告**  | 综合得分仪表盘、五维雷达图、严重级别分布、代码度量明细                                                              |
 | 🛠 **修复建议生成**   | 为严重问题生成上下文感知补丁；大模型不可用时回退到内置修复模板                                                          |
 | 📤 **四种报告导出**   | Markdown（贴评论/周报）· HTML（自包含可离线）· JSON（二次处理）· SARIF 2.1.0（接入代码扫描）                          |
-| 💻 **三种使用形态**   | Web 评审台 · 命令行工具 · REST API（14 个接口）                                                       |
+| ⚙️ **网页内配置模型** | 评审台「设置」面板即可选择供应商、填写自己的 API Key 并测试连通，无需编辑任何配置文件                                    |
+| 💻 **三种使用形态**   | Web 评审台 · 命令行工具 · REST API（18 个接口）                                                       |
 | 🚦 **CI 质量门禁**  | CLI 退出码约定：存在阻断/严重问题时返回 1，可直接接入流水线                                                        |
 | 🔌 **零依赖离线可用**  | 运行时仅使用 Node.js 内置模块，`npm install` 不下载任何第三方包，断网环境完整可用                                     |
 
@@ -207,6 +208,7 @@ CodeGuard AI 把代码评审拆解为**可并行的两件事**，各自发挥所
 | HTTP 微框架  | `src/core/http/`                   | 路由器、请求上下文、请求体解析、静态资源（含路径穿越防御）       |
 | 分类字典      | `src/core/taxonomy.js`             | 5 级严重程度（含权重）与 5 个审查维度的唯一定义处         |
 | 记录存储      | `src/core/storage.js`              | 一记录一 JSON 文件 + 内存索引，临时文件原子重命名写入     |
+| 运行时设置    | `src/core/settings-store.js`       | 网页「设置」的持久化：白名单清洗、密钥脱敏、运行时重算配置 |
 | 语言画像      | `src/analyzers/languages.js`       | 17 种语言的词法规则，注释 / 字符串 / 语法三通道分离      |
 | 度量引擎      | `src/analyzers/metrics.js`         | 圈复杂度、嵌套深度、函数识别、注释率、可维护性指数           |
 | 规则库       | `src/analyzers/rules/`             | 41 条规则定义，按维度分为 4 个文件，加载时校验字段合法性     |
@@ -495,6 +497,21 @@ CodeGuard AI 环境自检  v1.0.0
 | `openai-compatible` | 任意兼容 OpenAI 协议的服务 | `OPENAI_COMPATIBLE_API_KEY` + `OPENAI_COMPATIBLE_BASE_URL` + `OPENAI_COMPATIBLE_MODEL` |
 | `mock` | 离线演示、单元测试、断网环境 | 无需任何配置 |
 
+### 4.3 网页「设置」面板（推荐给不熟悉命令行的使用者）
+
+评审台右上角提供 **「⚙ 设置大模型」** 按钮，可在页面内完成全部配置：
+
+1. **选择供应商**：DeepSeek 官方 / 任意 OpenAI 兼容后端 / 离线模拟器；
+2. **填写自己的 API Key**：保存后**立即生效**，无需重启服务、无需编辑任何文件；
+3. **测试连接**：保存前先验证密钥是否可用，失败会给出具体原因；
+4. **清除**：一键回到 `.env` 默认值。
+
+**优先级**：页面设置 > `.env` > 内置默认值。页面上未填写的字段会自动沿用 `.env`。
+
+> **安全说明**：页面保存的设置只写入本机 `data/settings.json`。`data/` 已在 `.gitignore` 中，
+> 因此密钥**不会进入代码版本库**；接口返回的密钥一律脱敏为 `sk-xxxx****xxxx`，
+> 明文只在服务端内存中用于发起请求。
+
 `openai-compatible` 实测可用的后端示例：
 
 | 服务 | `OPENAI_COMPATIBLE_BASE_URL` |
@@ -536,6 +553,7 @@ codeguard-ai/
 │   │   ├── errors.js             # 错误体系与稳定错误码
 │   │   ├── utils.js              # 通用工具（并发映射、哈希、转义）
 │   │   ├── storage.js            # 评审记录的原子化持久化
+│   │   ├── settings-store.js     # 运行时设置（data/settings.json，不入版本库）
 │   │   └── http/
 │   │       ├── app.js            # 中间件流水线装配
 │   │       ├── router.js         # 微型路由器（支持路径参数）
@@ -565,6 +583,7 @@ codeguard-ai/
 │       ├── index.js              # 路由总装
 │       ├── review-routes.js      # 评审接口
 │       ├── report-routes.js      # 报告导出接口
+│       ├── settings-routes.js    # 运行时设置接口（读/写/连通性测试/清除）
 │       └── meta-routes.js        # 元信息接口
 ├── web/                          # 零依赖前端
 │   ├── index.html
@@ -574,7 +593,7 @@ codeguard-ai/
 │       ├── charts.js             # SVG 自绘图表
 │       ├── samples.js            # 内置演示样本
 │       └── app.js                # 交互逻辑
-├── test/                         # 单元与集成测试（98 个用例）
+├── test/                         # 单元与集成测试（107 个用例）
 │   ├── languages.test.js
 │   ├── metrics.test.js
 │   ├── static-analyzer.test.js
@@ -582,6 +601,7 @@ codeguard-ai/
 │   ├── llm-client.test.js
 │   ├── report-service.test.js
 │   ├── review-service.test.js
+│   ├── settings.test.js          # 运行时设置：白名单清洗、密钥脱敏、保存即生效
 │   └── api.test.js
 ├── examples/                     # 演示样本
 │   ├── vulnerable-sample.js      # 含多处典型缺陷（JS）
@@ -589,7 +609,7 @@ codeguard-ai/
 │   └── clean-sample.js           # 规范实现（用于验证零误报）
 ├── docs/
 │   ├── 架构设计.md               # 分层结构、四项关键设计决策的论证
-│   ├── API文档.md                # 14 个接口的参数、响应与错误码
+│   ├── API文档.md                # 18 个接口的参数、响应与错误码
 │   ├── 部署与运行.md             # 本地 / 局域网 / Docker / CI 四种部署路径
 │   ├── 环境配置说明.md           # 24 个环境变量逐项说明与依赖清单
 │   ├── 测试与验证报告.md         # 测试结果、真实验证数据与 13 项缺陷修复记录
@@ -636,9 +656,9 @@ npm test
 ```
 
 ```text
-ℹ tests 98
+ℹ tests 107
 ℹ suites 0
-ℹ pass 98
+ℹ pass 107
 ℹ fail 0
 ℹ duration_ms 1068.3
 ```
@@ -720,7 +740,16 @@ npm test
 <summary><b>没有 API Key 能用吗？</b></summary>
 
 能。不配置 `.env` 时系统仅运行静态规则引擎（41 条规则），功能完整、完全离线。
-也可以在 `.env` 中把 `LLM_PROVIDER` 设为 `mock`，以离线模拟模式体验含大模型环节的完整流程。
+也可以在页面右上角「⚙ 设置大模型」中选择**离线模拟器**，以离线模拟模式体验含大模型环节的完整流程。
+</details>
+
+<details>
+<summary><b>想用自己的 API Key，一定要改配置文件吗？</b></summary>
+
+不用。打开评审台后点右上角 **「⚙ 设置大模型」**：选择供应商 → 粘贴密钥 → 点「测试连接」确认可用
+→ 点「保存并生效」。**全程不需要编辑任何文件，也不需要重启服务。**
+
+密钥只保存在本机 `data/settings.json`（不进入版本库），接口返回一律脱敏。
 </details>
 
 <details>

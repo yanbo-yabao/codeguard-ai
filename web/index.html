@@ -25,6 +25,7 @@
       <span class="badge badge-muted" id="badge-llm">大模型检测中…</span>
       <span class="badge badge-muted" id="badge-rules">规则加载中…</span>
     </div>
+    <button class="btn btn-ghost btn-sm" type="button" id="btn-settings">⚙ 设置大模型</button>
     <nav class="topnav">
       <a href="/api/meta/routes" target="_blank" rel="noopener">接口清单</a>
       <a href="/api/meta/rules" target="_blank" rel="noopener">规则清单</a>
@@ -253,6 +254,55 @@
   <span class="dot-sep">·</span>
   <span>静态规则引擎离线可用，大模型评审可选启用</span>
 </footer>
+
+<!-- ==================== 大模型设置面板 ==================== -->
+<div class="modal-mask hidden" id="settings-mask">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+    <div class="modal-head">
+      <h2 id="settings-title">大模型设置</h2>
+      <button class="btn btn-ghost btn-sm" type="button" id="btn-settings-close">关闭</button>
+    </div>
+
+    <p class="modal-intro">
+      在这里选择大模型并填写<b>你自己的 API Key</b>。设置仅保存在本机
+      <code>data/settings.json</code>，不会上传、也不会进入代码版本库。
+      留空密钥表示不修改已保存的值。
+    </p>
+
+    <div class="modal-status" id="settings-status">读取中…</div>
+
+    <label class="field">
+      <span class="field-label">供应商</span>
+      <select id="settings-provider"></select>
+    </label>
+
+    <label class="field">
+      <span class="field-label">接口地址（Base URL）</span>
+      <input type="text" id="settings-baseurl" placeholder="https://api.deepseek.com">
+    </label>
+
+    <label class="field">
+      <span class="field-label">模型名</span>
+      <input type="text" id="settings-model" placeholder="deepseek-flash">
+    </label>
+
+    <label class="field">
+      <span class="field-label">
+        API Key
+        <span class="hint" id="settings-key-hint"></span>
+      </span>
+      <input type="password" id="settings-apikey" autocomplete="off" spellcheck="false"
+             placeholder="粘贴你的密钥（留空则不改）">
+    </label>
+
+    <div class="modal-actions">
+      <button class="btn btn-primary" type="button" id="btn-settings-save">保存并生效</button>
+      <button class="btn btn-ghost" type="button" id="btn-settings-test">测试连接</button>
+      <button class="btn btn-ghost" type="button" id="btn-settings-reset">清除（回到 .env）</button>
+      <span class="actions-note" id="settings-note"></span>
+    </div>
+  </div>
+</div>
 
 <div class="toast" id="toast"></div>
 

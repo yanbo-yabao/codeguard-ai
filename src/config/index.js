@@ -145,14 +145,23 @@ const PROVIDER_PRESETS = {
   },
 };
 
-/** 解析大模型配置 */
-function resolveLlm() {
-  const provider = str('LLM_PROVIDER', 'deepseek').toLowerCase();
+/**
+ * 解析大模型配置
+ * @param {object} [overrides] 运行时覆盖项（来自 data/settings.json，优先级高于 .env）
+ * @param {string} [overrides.provider] 供应商
+ * @param {string} [overrides.apiKey] 密钥
+ * @param {string} [overrides.model] 模型名
+ * @param {string} [overrides.baseUrl] 接口根地址
+ * @returns {object} 结构化的大模型配置
+ */
+function resolveLlm(overrides = {}) {
+  const provider = String(overrides.provider || str('LLM_PROVIDER', 'deepseek')).toLowerCase();
   const preset = PROVIDER_PRESETS[provider] || PROVIDER_PRESETS.deepseek;
 
-  const apiKey = preset.apiKeyKey ? str(preset.apiKeyKey, '') : '';
-  const baseUrl = preset.baseUrlKey ? str(preset.baseUrlKey, preset.baseUrlDefault) : '';
-  const model = preset.modelKey ? str(preset.modelKey, preset.modelDefault) : preset.modelDefault;
+  const apiKey = overrides.apiKey || (preset.apiKeyKey ? str(preset.apiKeyKey, '') : '');
+  const baseUrl = overrides.baseUrl || (preset.baseUrlKey ? str(preset.baseUrlKey, preset.baseUrlDefault) : '');
+  const model =
+    overrides.model || (preset.modelKey ? str(preset.modelKey, preset.modelDefault) : preset.modelDefault);
 
   // 密钥仍是模板占位符时视为未配置，避免误报「已就绪」
   const isPlaceholder = /^sk-x{6,}$/i.test(apiKey);
@@ -166,7 +175,7 @@ function resolveLlm() {
     model,
     available,
     requiresKey: preset.requiresKey,
-    reason: available ? 'ready' : '缺少 API Key（请在 .env 中配置对应密钥）',
+    reason: available ? 'ready' : '缺少 API Key（可在网页「设置」中填写，或写入 .env）',
   };
 }
 
@@ -211,6 +220,20 @@ const config = {
 // 派生目录
 config.storage.reviewsDir = path.join(config.storage.dataDir, 'reviews');
 config.storage.reportsDir = path.join(config.storage.dataDir, 'reports');
+
+/**
+ * 运行时重算大模型配置
+ * ---------------------------------------------------------------------------
+ * 网页「设置」面板保存后调用，使新供应商 / 新密钥 / 新模型**立即生效**，无需重启服务。
+ * 注意：`llm` 与 `config.llm` 是同一个对象，原地合并即可让 describe()/selfCheck() 同步感知。
+ * @param {object} [overrides] 覆盖项（来自 data/settings.json）
+ * @returns {object} 重算后的 llm 配置
+ */
+config.refreshLlm = function refreshLlm(overrides = {}) {
+  Object.assign(config.llm, resolveLlm(overrides));
+  config.review.enableLlm = bool('REVIEW_ENABLE_LLM', true) && config.llm.available;
+  return config.llm;
+};
 
 /**
  * 生成脱敏后的配置快照（密钥只保留前后各 4 位）

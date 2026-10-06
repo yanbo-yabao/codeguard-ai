@@ -9,6 +9,7 @@
 - [评审接口](#评审接口)
 - [报告导出接口](#报告导出接口)
 - [元信息接口](#元信息接口)
+- [运行时设置接口](#运行时设置接口)
 - [数据模型](#数据模型)
 
 ---
@@ -507,6 +508,87 @@ curl "http://127.0.0.1:8848/api/reviews/rv_lq3k9x_a1b2/report?format=sarif&downl
   "node": "v20.11.0"
 }
 ```
+
+---
+
+## 运行时设置接口
+
+> 让使用者在**不编辑任何配置文件**的前提下选择大模型、填写自己的 API Key。
+
+### GET /api/settings
+
+读取当前生效的大模型设置（密钥已脱敏）、可选供应商清单与本地设置文件路径。
+
+**响应示例**
+
+```json
+{
+  "llm": {
+    "provider": "deepseek",
+    "providerLabel": "DeepSeek 官方",
+    "model": "deepseek-flash",
+    "baseUrl": "https://api.deepseek.com",
+    "available": true,
+    "requiresKey": true,
+    "reason": "ready",
+    "apiKeyMasked": "sk-5****a1ad",
+    "apiKeySource": "env"
+  },
+  "overrides": { "provider": "deepseek", "model": "", "baseUrl": "", "hasApiKey": true },
+  "providers": [{ "key": "deepseek", "label": "DeepSeek 官方", "needsKey": true }],
+  "storageFile": "<数据目录>/settings.json"
+}
+```
+
+| 字段 | 说明 |
+| --- | --- |
+| `llm.apiKeyMasked` | 脱敏后的密钥（仅前 4 位 + 后 4 位）；**任何情况下都不返回明文** |
+| `llm.apiKeySource` | `settings`（来自页面设置）/ `env`（来自 .env）/ `none`（未配置） |
+| `llm.available` | 当前是否具备调用条件；为 `false` 时评审自动降级为纯规则引擎 |
+
+---
+
+### POST /api/settings
+
+保存设置并**立即生效**（无需重启服务）。
+
+**请求体**
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `provider` | string | `deepseek` / `openai-compatible` / `mock` |
+| `model` | string | 模型名 |
+| `baseUrl` | string | 接口根地址（`openai-compatible` 必填） |
+| `apiKey` | string \| null | 非空字符串 = 写入新密钥；`null` = 清除该覆盖；空串或缺省 = 沿用已保存的密钥 |
+
+**响应**：与 `GET /api/settings` 同构。设置文件写入失败返回 `500`。
+
+---
+
+### POST /api/settings/test
+
+用给定（或已保存）的设置发起一次最小对话，验证连通性。
+
+**响应始终为 `200`**，结果体现在 `ok` 字段：
+
+```json
+{ "ok": true, "message": "连接成功：deepseek / deepseek-flash", "model": "deepseek-flash", "latencyMs": 812, "reply": "OK" }
+```
+
+失败示例：
+
+```json
+{ "ok": false, "message": "大模型接口返回 401" }
+```
+
+---
+
+### DELETE /api/settings
+
+清除页面保存的设置，回到 `.env` / 内置默认值。**响应**：与 `GET /api/settings` 同构。
+
+> **安全说明**：设置写入本机 `data/settings.json`。`data/` 已在 `.gitignore` 中，
+> 因此密钥不会进入代码版本库；接口响应中的密钥一律脱敏。
 
 ---
 

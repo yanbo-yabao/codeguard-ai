@@ -11,6 +11,7 @@ const { Router } = require('../core/http/router');
 const reviewRoutes = require('./review-routes');
 const reportRoutes = require('./report-routes');
 const metaRoutes = require('./meta-routes');
+const settingsRoutes = require('./settings-routes');
 
 /**
  * 构建应用路由
@@ -29,6 +30,7 @@ function buildRoutes(options = {}) {
   reviewRoutes.register(router, service);
   reportRoutes.register(router, service);
   metaRoutes.register(router, service);
+  settingsRoutes.register(router, service);
 
   return { router, service };
 }
