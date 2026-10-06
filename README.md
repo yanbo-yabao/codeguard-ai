@@ -305,6 +305,10 @@ cp .env.example .env        # Windows PowerShell: Copy-Item .env.example .env
 npm start
 ```
 
+> **Windows 用户看这里（最省事）**：仓库根目录已提供 `start.bat`，
+> **双击即可启动**，不必手动敲上面三条命令。脚本会自动检查 Node.js，
+> 若未安装会给出官方下载地址；macOS / Linux 仍按上面三步执行。
+
 启动成功后终端会打印访问地址：
 
 ```text
