@@ -156,15 +156,17 @@ class FixAgent {
    * @param {object} input.issue 问题对象
    * @param {string} input.code 完整源码
    * @param {string} input.language 语言标签
+   * @param {boolean} [input.allowLlm] 是否允许调用大模型；为 false 时强制使用内置模板（离线）
    * @returns {Promise<object>} 修复方案
    */
-  async suggestFix({ issue, code, language }) {
+  async suggestFix({ issue, code, language, allowLlm = true }) {
     const lines = String(code ?? '').split('\n');
     const from = Math.max(1, issue.line - 15);
     const to = Math.min(lines.length, issue.line + 15);
     const context = lines.slice(from - 1, to).join('\n');
 
-    if (!this.client.available) {
+    // 离线模式（useLlm=false）与客户端不可用，都必须走模板兜底，保证「零大模型调用」的承诺
+    if (!allowLlm || !this.client.available) {
       return { ...buildOfflineFix(issue, context), source: 'template' };
     }
 
@@ -206,13 +208,14 @@ class FixAgent {
    * @param {string} input.code 源码
    * @param {string} input.language 语言
    * @param {number} [input.limit] 最多生成几条
+   * @param {boolean} [input.allowLlm] 是否允许调用大模型
    * @returns {Promise<Array<object>>} 修复方案列表（含 issueId）
    */
-  async suggestFixBatch({ issues, code, language, limit = 8 }) {
+  async suggestFixBatch({ issues, code, language, limit = 8, allowLlm = true }) {
     const targets = issues.slice(0, limit);
     const output = [];
     for (const issue of targets) {
-      const fix = await this.suggestFix({ issue, code, language });
+      const fix = await this.suggestFix({ issue, code, language, allowLlm });
       output.push({ issueId: issue.id, ruleId: issue.ruleId, title: issue.title, line: issue.line, ...fix });
     }
     return output;

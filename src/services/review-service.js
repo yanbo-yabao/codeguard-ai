@@ -202,6 +202,8 @@ class ReviewService {
           code: normalized.code,
           language: profile.label,
           limit: normalized.fixLimit,
+          // 离线模式必须走模板，确保「零大模型调用」的承诺不因修复建议而破例
+          allowLlm: normalized.useLlm,
         });
       } catch (error) {
         warnings.push(`生成修复建议失败：${error.message}`);

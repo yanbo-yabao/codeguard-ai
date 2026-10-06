@@ -147,6 +147,25 @@ test('review：完整流程产出结构完整的评审记录并持久化', async
   assert.ok(listed.items.some((item) => item.id === record.id));
 });
 
+test('review：离线模式下修复建议使用内置模板且零大模型调用（回归）', async () => {
+  const service = createService();
+  const record = await service.review({
+    code: 'const API_KEY = "sk-abcdef1234567890";\n',
+    fileName: 'demo.js',
+    useLlm: false,
+    includeFixes: true,
+    fixLimit: 3,
+  });
+
+  assert.ok(record.fixes.length > 0, '离线模式仍应生成修复建议（走内置模板）');
+  assert.ok(
+    record.fixes.every((fix) => fix.source === 'template'),
+    `离线模式修复建议必须来自内置模板，实际来源：${record.fixes.map((fix) => fix.source).join(',')}`,
+  );
+  assert.equal(record.llm.usage.calls || 0, 0, 'useLlm=false 时不得产生任何大模型调用');
+  assert.equal(record.engines.llm, false);
+});
+
 test('review：关闭大模型时降级为纯规则引擎并给出说明', async () => {
   const service = createService();
   const record = await service.review({
