@@ -217,7 +217,7 @@ fix(analyzer): 除零规则只检查当前行导致误判
 
 提交前请逐项确认：
 
-- [ ] `npm test` 全部通过（97 个用例）
+- [ ] `npm test` 全部通过（98 个用例）
 - [ ] 未引入运行时第三方依赖（`package.json` 的 `dependencies` 仍为空）
 - [ ] 新增/修改的功能有对应测试，且包含反例
 - [ ] 导出的函数有 JSDoc（含 `@param` / `@returns`）

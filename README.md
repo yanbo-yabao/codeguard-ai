@@ -8,7 +8,7 @@
 
 ![Node](https://img.shields.io/badge/Node.js-%E2%89%A518.17-2da44e)
 ![依赖](https://img.shields.io/badge/%E8%BF%90%E8%A1%8C%E6%97%B6%E4%BE%9D%E8%B5%96-0-2f81f7)
-![测试](https://img.shields.io/badge/%E5%8D%95%E5%85%83%E6%B5%8B%E8%AF%95-95%20%E9%80%9A%E8%BF%87-2da44e)
+![测试](https://img.shields.io/badge/%E5%8D%95%E5%85%83%E6%B5%8B%E8%AF%95-98%20%E9%80%9A%E8%BF%87-2da44e)
 ![规则](https://img.shields.io/badge/%E5%AE%A1%E6%9F%A5%E8%A7%84%E5%88%99-41%20%E6%9D%A1-a371f7)
 ![协议](https://img.shields.io/badge/%E5%BC%80%E6%BA%90%E5%8D%8F%E8%AE%AE-MIT-d29922)
 
@@ -563,7 +563,7 @@ codeguard-ai/
 │       ├── charts.js             # SVG 自绘图表
 │       ├── samples.js            # 内置演示样本
 │       └── app.js                # 交互逻辑
-├── test/                         # 单元与集成测试（95 个用例）
+├── test/                         # 单元与集成测试（98 个用例）
 │   ├── languages.test.js
 │   ├── metrics.test.js
 │   ├── static-analyzer.test.js
@@ -581,7 +581,7 @@ codeguard-ai/
 │   ├── API文档.md                # 14 个接口的参数、响应与错误码
 │   ├── 部署与运行.md             # 本地 / 局域网 / Docker / CI 四种部署路径
 │   ├── 环境配置说明.md           # 24 个环境变量逐项说明与依赖清单
-│   ├── 测试与验证报告.md         # 测试结果、真实验证数据与 12 项缺陷修复记录
+│   ├── 测试与验证报告.md         # 测试结果、真实验证数据与 13 项缺陷修复记录
 │   ├── 评分标准对齐说明.md       # 逐条映射赛题要求与落点
 │   ├── sample-report.md          # 真实审查报告样例（Markdown）
 │   ├── sample-report.html        # 自包含 HTML 报告（可直接双击打开）
@@ -625,11 +625,11 @@ npm test
 ```
 
 ```text
-ℹ tests 95
+ℹ tests 98
 ℹ suites 0
-ℹ pass 95
+ℹ pass 98
 ℹ fail 0
-ℹ duration_ms 1059.4
+ℹ duration_ms 1068.3
 ```
 
 ### 6.2 测试覆盖范围
@@ -642,7 +642,7 @@ npm test
 | `score-service.test.js` | 12 | 满分与等级边界、σ 单调性、扣分闭环可复算、结构风险修正、维度敏感度 |
 | `llm-client.test.js` | 13 | 非标准 JSON 容错解析、5xx 重试、401 立即失败、超时中止、思维链截断诊断、离线模拟器确定性 |
 | `report-service.test.js` | 6 | 四种格式结构完整性、HTML 自包含与 XSS 转义、SARIF 规范形态 |
-| `review-service.test.js` | 13 | 输入校验、双引擎融合与印证统计、降级行为、持久化、概览统计 |
+| `review-service.test.js` | 14 | 输入校验、双引擎融合与印证统计、降级行为、**离线零大模型调用**、持久化、概览统计 |
 | `api.test.js` | 14 | 全部接口的请求-响应链路、400/404/405 错误码、报告下载、静态资源与 304 缓存、路径穿越防御、安全响应头 |
 
 测试中使用**离线模拟器**作为大模型后端，因此整套测试**无需网络、无需密钥、结果确定可复现**。
