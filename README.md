@@ -501,6 +501,8 @@ CodeGuard AI 环境自检  v1.0.0
 
 评审台右上角提供 **「⚙ 设置大模型」** 按钮，可在页面内完成全部配置：
 
+![大模型设置面板](docs/images/screenshot-settings.png)
+
 1. **选择供应商**：DeepSeek 官方 / 任意 OpenAI 兼容后端 / 离线模拟器；
 2. **填写自己的 API Key**：保存后**立即生效**，无需重启服务、无需编辑任何文件；
 3. **测试连接**：保存前先验证密钥是否可用，失败会给出具体原因；
@@ -750,6 +752,31 @@ npm test
 → 点「保存并生效」。**全程不需要编辑任何文件，也不需要重启服务。**
 
 密钥只保存在本机 `data/settings.json`（不进入版本库），接口返回一律脱敏。
+</details>
+
+<details>
+<summary><b>git push 长时间卡住不动怎么办？</b></summary>
+
+部分网络环境下 git 走 HTTP/2 推送会长时间无响应（表现为 `git push` 无任何输出）。
+强制改用 HTTP/1.1 通常可立即恢复正常：
+
+```bash
+git -c http.version=HTTP/1.1 push
+```
+
+也可写入全局配置一次性解决：
+
+```ini
+# ~/.gitconfig
+[http]
+    version = HTTP/1.1
+```
+
+若想快速失败而不是无限等待，可加低速保护：
+
+```bash
+git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=25 push
+```
 </details>
 
 <details>
