@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 700" width="1180" height="700" font-family="-apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#4d5866"/>
+    </marker>
+    <marker id="a2r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#8b98a5"/>
+    </marker>
+  </defs>
+
+  <rect width="1180" height="700" fill="#0b0f14"/>
+
+  <text x="40" y="50" fill="#e6edf3" font-size="23" font-weight="700">审查流水线</text>
+  <text x="40" y="76" fill="#8b98a5" font-size="13">源码输入到评分报告输出的七个阶段 · 静态分析是可用性底线，大模型相关阶段全部可选且可降级</text>
+
+  <!-- 阶段 1 -->
+  <rect x="40" y="110" width="250" height="86" rx="9" fill="#141a22" stroke="#2f81f7"/>
+  <text x="58" y="136" fill="#2f81f7" font-size="12" font-weight="700">① 输入校验</text>
+  <text x="58" y="158" fill="#cdd9e5" font-size="12">空内容 / 超长（&gt;80 万字符）拦截</text>
+  <text x="58" y="177" fill="#8b98a5" font-size="11.5">文件名基名化 · 参数归一与非法值修正</text>
+
+  <line x1="290" y1="153" x2="330" y2="153" stroke="#4d5866" marker-end="url(#a2)"/>
+
+  <!-- 阶段 2 -->
+  <rect x="332" y="110" width="250" height="86" rx="9" fill="#141a22" stroke="#2da44e"/>
+  <text x="350" y="136" fill="#2da44e" font-size="12" font-weight="700">② 语言识别与预处理</text>
+  <text x="350" y="158" fill="#cdd9e5" font-size="12">扩展名 → 内容特征 → 纯文本兜底</text>
+  <text x="350" y="177" fill="#8b98a5" font-size="11.5">生成 code / syntax / comment 三通道</text>
+
+  <line x1="582" y1="153" x2="622" y2="153" stroke="#4d5866" marker-end="url(#a2)"/>
+
+  <!-- 阶段 3 -->
+  <rect x="624" y="110" width="250" height="86" rx="9" fill="#141a22" stroke="#2da44e"/>
+  <text x="642" y="136" fill="#2da44e" font-size="12" font-weight="700">③ 规则引擎扫描</text>
+  <text x="642" y="158" fill="#cdd9e5" font-size="12">41 条规则 · 五类扫描方式</text>
+  <text x="642" y="177" fill="#8b98a5" font-size="11.5">度量计算 · 单规则异常隔离 · 去重排序</text>
+
+  <line x1="874" y1="153" x2="914" y2="153" stroke="#4d5866" marker-end="url(#a2)"/>
+
+  <!-- 阶段 4 -->
+  <rect x="916" y="110" width="224" height="86" rx="9" fill="#141a22" stroke="#a371f7"/>
+  <text x="934" y="136" fill="#a371f7" font-size="12" font-weight="700">④ 多角色语义评审</text>
+  <text x="934" y="158" fill="#cdd9e5" font-size="12">四角色并发 · 分段送审</text>
+  <text x="934" y="177" fill="#8b98a5" font-size="11.5">失败重试与降级</text>
+
+  <!-- 降级分支 -->
+  <path d="M 1028 196 L 1028 232 L 500 232 L 500 268" fill="none" stroke="#8b98a5" stroke-dasharray="5 4" marker-end="url(#a2r)"/>
+  <text x="700" y="226" fill="#d29922" font-size="11.5" text-anchor="middle">大模型不可用 / 调用失败 → 跳过该阶段，仅保留规则引擎结论并在告警中说明</text>
+
+  <!-- 阶段 5 -->
+  <rect x="40" y="270" width="300" height="100" rx="9" fill="#141a22" stroke="#2f81f7"/>
+  <text x="58" y="296" fill="#2f81f7" font-size="12" font-weight="700">⑤ 结果融合</text>
+  <text x="58" y="318" fill="#cdd9e5" font-size="12">同维度 ±2 行内的大模型结论视为</text>
+  <text x="58" y="337" fill="#cdd9e5" font-size="12">对规则结论的「互相印证」</text>
+  <text x="58" y="356" fill="#8b98a5" font-size="11.5">被印证的结论不重复计入，仅累加印证次数</text>
+
+  <line x1="340" y1="320" x2="380" y2="320" stroke="#4d5866" marker-end="url(#a2)"/>
+
+  <!-- 阶段 6 -->
+  <rect x="382" y="270" width="300" height="100" rx="9" fill="#141a22" stroke="#2f81f7"/>
+  <text x="400" y="296" fill="#2f81f7" font-size="12" font-weight="700">⑥ 评分与建议生成</text>
+  <text x="400" y="318" fill="#cdd9e5" font-size="12">加权扣分 × 规模归一化系数 σ</text>
+  <text x="400" y="337" fill="#cdd9e5" font-size="12">五维得分 · 等级划分 · 结构风险修正</text>
+  <text x="400" y="356" fill="#8b98a5" font-size="11.5">并行为严重问题生成修复补丁</text>
+
+  <line x1="682" y1="320" x2="722" y2="320" stroke="#4d5866" marker-end="url(#a2)"/>
+
+  <!-- 阶段 7 -->
+  <rect x="724" y="270" width="416" height="100" rx="9" fill="#141a22" stroke="#2d8a4e"/>
+  <text x="742" y="296" fill="#2da44e" font-size="12" font-weight="700">⑦ 落盘与多形态输出</text>
+  <text x="742" y="318" fill="#cdd9e5" font-size="12">JSON 原子写入 + 内存索引（重启自动重建）</text>
+  <text x="742" y="337" fill="#cdd9e5" font-size="12">终端彩色报告 · Markdown · 自包含 HTML · SARIF 2.1.0</text>
+  <text x="742" y="356" fill="#8b98a5" font-size="11.5">记录 ID + 代码指纹 SHA-256 → 结论可完整复现</text>
+
+  <!-- 复现闭环 -->
+  <path d="M 932 370 L 932 410 L 190 410 L 190 396" fill="none" stroke="#8b98a5" stroke-dasharray="5 4" marker-end="url(#a2r)"/>
+  <text x="560" y="404" fill="#8b98a5" font-size="11.5" text-anchor="middle">依据代码指纹与记录参数可完整复算得分，支撑评审复核</text>
+
+  <!-- 图例 -->
+  <rect x="40" y="450" width="1100" height="220" rx="10" fill="#101720" stroke="#1e2a35"/>
+  <text x="60" y="478" fill="#e6edf3" font-size="13" font-weight="600">降级策略与退出码约定</text>
+
+  <g font-size="12" fill="#cdd9e5">
+    <text x="60" y="508">· 大模型未配置　：自动仅运行规则引擎，报告中「结论摘要」改用确定性兜底结论，并在 warnings 中说明。</text>
+    <text x="60" y="534">· 单角色调用失败：其余角色与规则引擎结果照常输出，告警中列出失败原因（按错误信息去重）。</text>
+    <text x="60" y="560">· 全部调用失败　：审查整体仍然成功，得分由规则引擎结论计算，绝不返回 5xx。</text>
+    <text x="60" y="586">· 单条规则异常　：捕获后跳过该规则并记录 warn 日志，不影响其余 40 条规则执行。</text>
+    <text x="60" y="612">· 记录文件损坏　：读取索引时跳过该文件并告警，不阻断服务启动。</text>
+    <text x="60" y="638">· CLI 退出码　　：0 = 无阻断级问题；1 = 存在 blocker / critical（可直接作为 CI 质量门禁）；2 = 参数或输入错误。</text>
+  </g>
+</svg>
