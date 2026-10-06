@@ -771,7 +771,7 @@ npm test
 | **作品名称** | CodeGuard AI · 智码审 |
 | **团队成员** | 颜文博（平顶山学院 · 软件工程）、刘蕊（平顶山学院 · 软件工程）、杨蕊雨（平顶山学院 · 软件工程） |
 | **指导教师** | 乔明旭 |
-| **代码托管** | [https://gitee.com/YB076/1234](https://gitee.com/YB076/1234) |
+| **代码托管** | [https://gitee.com/YB076/codeguard-ai](https://gitee.com/YB076/codeguard-ai) |
 | **演示视频** | （如有请补充） |
 
 ### 分工说明
