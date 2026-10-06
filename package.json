@@ -1,0 +1,43 @@
+{
+  "name": "codeguard-ai",
+  "version": "1.0.0",
+  "description": "CodeGuard AI（智码审）—— 面向开发者的 AI 代码审查 Agent：规则引擎静态分析 + 多角色大模型评审 + 可视化评分报告",
+  "keywords": [
+    "ai",
+    "code-review",
+    "static-analysis",
+    "llm",
+    "agent",
+    "deepseek",
+    "gitee"
+  ],
+  "license": "MIT",
+  "type": "commonjs",
+  "main": "src/server.js",
+  "bin": {
+    "codeguard": "bin/codeguard.js"
+  },
+  "engines": {
+    "node": ">=18.17.0"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "review": "node bin/codeguard.js review",
+    "doctor": "node bin/codeguard.js doctor",
+    "rules": "node bin/codeguard.js rules",
+    "test": "node --test \"test/*.test.js\"",
+    "test:watch": "node --test --watch \"test/*.test.js\""
+  },
+  "dependencies": {},
+  "devDependencies": {},
+  "files": [
+    "bin",
+    "src",
+    "web",
+    "docs",
+    "examples",
+    "README.md",
+    "LICENSE"
+  ]
+}
