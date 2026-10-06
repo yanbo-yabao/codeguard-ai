@@ -1,0 +1,110 @@
+name: CodeGuard 代码审查
+displayName: '代码质量门禁'
+
+# ---------------------------------------------------------------------------
+# Gitee Go 流水线：安装 → 测试 → 静态审查 → 规则引擎自查 → 归档报告
+#
+# 说明：
+#   1. 默认使用 LLM_PROVIDER=mock，在 CI 中不消耗真实大模型额度，且无需配置密钥；
+#      如需启用真实大模型审查，把 LLM_PROVIDER 改为 deepseek 并在 Gitee 的
+#      「流水线变量」中配置 DEEPSEEK_API_KEY（勾选私密变量）。
+#   2. CLI 的退出码约定使流水线天然成为质量门禁：
+#         0 = 无阻断级问题      1 = 存在 blocker/critical      2 = 参数错误
+#      若希望「有阻断级问题即中断流水线」，保留最后的 review 步骤即可；
+#      若只想产出报告不中断，在其后追加 `|| true`。
+# ---------------------------------------------------------------------------
+
+triggers:
+  push:
+    branches:
+      include:
+        - master
+        - main
+        - 'feature/**'
+        - 'release/**'
+  pull_request:
+    branches:
+      include:
+        - master
+        - main
+
+variables:
+  GLOBAL:
+    LLM_PROVIDER: mock
+    LOG_FORMAT: json
+    LOG_LEVEL: info
+    REPORT_DIR: reports
+
+stages:
+  # ========================= 阶段一：质量验证 =========================
+  - stage:
+      name: verify
+      displayName: '质量验证'
+      steps:
+        - step: build@node
+          name: install
+          displayName: 'Node 环境与依赖安装'
+          nodeVersion: 20
+          commands:
+            - node --version
+            - npm --version
+            # 本项目运行时零第三方依赖，此步骤不下载任何包
+            - npm install
+
+        - step: build@node
+          name: test
+          displayName: '单元与集成测试（97 个用例）'
+          nodeVersion: 20
+          commands:
+            - npm test
+
+        - step: build@node
+          name: doctor
+          displayName: '环境自检'
+          nodeVersion: 20
+          commands:
+            - node bin/codeguard.js doctor
+
+  # ========================= 阶段二：代码审查 =========================
+  - stage:
+      name: review
+      displayName: '代码审查'
+      steps:
+        - step: build@node
+          name: dogfood
+          displayName: '规则引擎自查（审查本项目源码）'
+          nodeVersion: 20
+          commands:
+            - mkdir -p $REPORT_DIR
+            # 用自身引擎审查自身，验证规则设计的合理性
+            - node bin/codeguard.js review src/ --no-llm --min-severity major --format markdown --out $REPORT_DIR/self-review.md
+            - node bin/codeguard.js review src/ --no-llm --min-severity major --format sarif --out $REPORT_DIR/self-review.sarif.json
+
+        - step: build@node
+          name: examples
+          displayName: '样本审查（含零误报回归验证）'
+          nodeVersion: 20
+          commands:
+            # 规范实现应得满分，用于持续验证引擎不误报
+            - node bin/codeguard.js review examples/clean-sample.js --no-llm --format markdown --out $REPORT_DIR/clean-sample.md
+            # 漏洞样本应检出多项阻断级问题
+            - node bin/codeguard.js review examples/vulnerable-sample.js --no-llm --format markdown --out $REPORT_DIR/vulnerable-sample.md
+            - node bin/codeguard.js review examples/messy-sample.py --no-llm --format markdown --out $REPORT_DIR/messy-sample.md
+
+        - step: build@node
+          name: jsonreport
+          displayName: '生成机器可读报告'
+          nodeVersion: 20
+          commands:
+            - node bin/codeguard.js review examples/vulnerable-sample.js --format json --out $REPORT_DIR/report.json
+
+  # ========================= 阶段三：产物归档 =========================
+  - stage:
+      name: publish
+      displayName: '产物归档'
+      steps:
+        - step: publish@artifact
+          name: artifact
+          displayName: '上传审查报告'
+          artifactName: codeguard-reports
+          artifactPath: $REPORT_DIR

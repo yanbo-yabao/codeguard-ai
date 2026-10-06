@@ -1,0 +1,68 @@
+# ---------------------------------------------------------------------------
+# CodeGuard AI 容器编排
+# 启动：docker compose up -d --build
+# 自定义：PORT=9000 DEEPSEEK_API_KEY=sk-xxx docker compose up -d
+# ---------------------------------------------------------------------------
+
+services:
+  codeguard:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: codeguard-ai:1.0.0
+    container_name: codeguard
+    restart: unless-stopped
+
+    ports:
+      - "${PORT:-8848}:8848"
+
+    environment:
+      # -------------------- 服务参数 --------------------
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 8848
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      DATA_DIR: /app/data
+
+      # -------------------- 大模型服务 --------------------
+      # 不填 DEEPSEEK_API_KEY 时自动进入纯规则引擎模式，服务依然完整可用
+      LLM_PROVIDER: ${LLM_PROVIDER:-deepseek}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-flash}
+
+      # -------------------- 审查引擎 --------------------
+      REVIEW_ENABLE_LLM: ${REVIEW_ENABLE_LLM:-true}
+      REVIEW_TEMPERATURE: ${REVIEW_TEMPERATURE:-0.2}
+      # 思维链模型需较大的输出预算，否则正文会被推理过程挤占而截断
+      REVIEW_MAX_TOKENS: ${REVIEW_MAX_TOKENS:-16000}
+      REVIEW_CONCURRENCY: ${REVIEW_CONCURRENCY:-2}
+      REVIEW_TIMEOUT_MS: ${REVIEW_TIMEOUT_MS:-120000}
+      REVIEW_CHUNK_LINES: ${REVIEW_CHUNK_LINES:-400}
+
+    volumes:
+      # 评审记录持久化，容器重建不丢数据
+      - codeguard-data:/app/data
+
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:8848/api/meta/health').then(r=>process.exit(r.status===200?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+    # 大模型调用为长耗时网络请求，日志轮转避免磁盘被写满
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  codeguard-data:
+    name: codeguard-data
