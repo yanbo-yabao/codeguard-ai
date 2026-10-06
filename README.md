@@ -577,20 +577,34 @@ codeguard-ai/
 │   ├── messy-sample.py           # 含 Python 专有缺陷
 │   └── clean-sample.js           # 规范实现（用于验证零误报）
 ├── docs/
-│   ├── 架构设计.md
-│   ├── API文档.md
-│   ├── 部署与运行.md
-│   ├── 环境配置说明.md
-│   ├── 测试与验证报告.md
-│   ├── 评分标准对齐说明.md
-│   ├── sample-report.md          # 真实审查报告样例
-│   ├── sample-report.html
+│   ├── 架构设计.md               # 分层结构、四项关键设计决策的论证
+│   ├── API文档.md                # 14 个接口的参数、响应与错误码
+│   ├── 部署与运行.md             # 本地 / 局域网 / Docker / CI 四种部署路径
+│   ├── 环境配置说明.md           # 24 个环境变量逐项说明与依赖清单
+│   ├── 测试与验证报告.md         # 测试结果、真实验证数据与 12 项缺陷修复记录
+│   ├── 评分标准对齐说明.md       # 逐条映射赛题要求与落点
+│   ├── sample-report.md          # 真实审查报告样例（Markdown）
+│   ├── sample-report.html        # 自包含 HTML 报告（可直接双击打开）
+│   ├── sample-report.json        # 机器可读报告
+│   ├── sample-report.sarif.json  # SARIF 2.1.0 报告
 │   └── images/
-│       ├── architecture.svg
-│       └── pipeline.svg
+│       ├── architecture.svg      # 技术架构图
+│       ├── pipeline.svg          # 审查流水线图
+│       ├── screenshot-review.png # 评审台整页截图
+│       ├── screenshot-top.png    # 评审台首屏截图
+│       ├── screenshot-fixes.png  # 修复建议面板
+│       └── screenshot-metrics.png # 代码度量面板
 ├── docker/
-│   ├── Dockerfile
-│   └── docker-compose.yml
+│   ├── Dockerfile                # 多阶段构建、非 root 运行、健康检查
+│   └── docker-compose.yml        # 编排、数据卷持久化、日志轮转
+├── tools/
+│   └── push-to-gitee.ps1         # Gitee 一键推送脚本（含密钥泄漏自检）
+├── .workflow/
+│   └── codeguard.yml             # Gitee Go 流水线（测试 → 审查 → 归档）
+├── .gitee/
+│   ├── ISSUE_TEMPLATE/
+│   │   └── bug_report.md         # 缺陷报告模板（区分误报与漏报）
+│   └── PULL_REQUEST_TEMPLATE.md  # PR 自检清单
 ├── .env.example                  # 环境变量模板
 ├── .editorconfig                 # 跨编辑器代码风格
 ├── .gitignore                    # 排除 node_modules / .env / data
