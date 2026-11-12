@@ -115,6 +115,16 @@ async function api(path, options = {}) {
   return data;
 }
 
+// fetch 层错误转成人话（连不上本机服务是新手最常见的情况）
+if (typeof window !== 'undefined' && typeof window.fetch === 'function') {
+  window.fetch = ((original) => (...args) => original(...args).catch((error) => {
+    if (error && /Failed to fetch|Load failed|NetworkError|fetch failed/i.test(error.message || '')) {
+      throw new Error('连不上本机服务：请确认 start.bat 的黑色窗口还开着（关了就再双击它）');
+    }
+    throw error;
+  }))(window.fetch.bind(window));
+}
+
 function updateStats(textarea, label) {
   const value = textarea.value;
   label.textContent = `${value ? value.split('\n').length : 0} 行 · ${value.length} 字符`;
