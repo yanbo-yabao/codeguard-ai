@@ -21,11 +21,12 @@ RUN npm install --omit=dev --no-audit --no-fund
 FROM node:20-alpine AS runtime
 
 LABEL org.opencontainers.image.title="CodeGuard AI" \
-      org.opencontainers.image.description="面向开发者的 AI 代码审查 Agent：静态规则引擎 + 多角色大模型语义评审" \
+      org.opencontainers.image.description="CodeGuard AI（智码审）—— AI 编程学习助手：解题补全 / 变式练习 / 代码测试 / 错误修复" \
       org.opencontainers.image.licenses="MIT"
 
-# 安装最小运行依赖：dumb-init 负责正确转发信号，tini 亦可；这里用 dumb-init
-RUN apk add --no-cache dumb-init \
+# 安装最小运行依赖 + 代码运行工具链（云上「运行」功能 5 种语言都能跑）：
+#   python3 → Python；gcc/g++ + musl-dev → C / C++；openjdk21-jdk-headless → Java（javac/java）
+RUN apk add --no-cache dumb-init python3 gcc g++ musl-dev openjdk21-jdk-headless \
     && addgroup -g 10001 -S codeguard \
     && adduser -u 10001 -S codeguard -G codeguard
 

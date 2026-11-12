@@ -1,0 +1,18 @@
+# Render 部署描述（免费档）：连接 GitHub 仓库后按此配置一键部署
+services:
+  - type: web
+    name: codeguard-ai
+    runtime: docker
+    dockerfilePath: ./docker/Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /api/meta/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: PORT
+        value: 8848
+      - key: LOG_LEVEL
+        value: info
