@@ -24,6 +24,16 @@ if errorlevel 1 (
   exit /b 1
 )
 
+rem ---- Already running? Just open the browser (no double start) ----
+netstat -ano | findstr "LISTENING" | findstr ":8848" >nul 2>nul
+if not errorlevel 1 (
+  echo.
+  echo  [i] CodeGuard AI is ALREADY running. Opening browser ...
+  start "" "http://127.0.0.1:8848/"
+  timeout /t 2 >nul
+  exit /b 0
+)
+
 echo.
 echo  ========================================================
 echo     CodeGuard AI  -  starting...
@@ -44,4 +54,8 @@ rem Wait 2s for the server to boot, then open the default browser
 start "" powershell -NoProfile -WindowStyle Hidden -Command "Start-Sleep -Seconds 2; Start-Process 'http://127.0.0.1:8848/'"
 
 node src/server.js
-pause
+if errorlevel 1 (
+  echo.
+  echo  [!] Server stopped unexpectedly. See the message above.
+  pause
+)
