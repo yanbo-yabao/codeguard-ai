@@ -576,6 +576,9 @@ class RunService {
       javascript: { cmd: process.execPath, args: [] },
       python: find([
         { cmd: process.env.PYTHON_BIN || '', args: [], probeArgs: ['--version'] },
+        // 便携工具链（部署给他人时解压即用，免安装）
+        { cmd: path.join(REPO_ROOT, 'tools', 'python', 'python.exe') },
+        { cmd: path.join(REPO_ROOT, 'tools', 'python3', 'python.exe') },
         { cmd: 'py', args: ['-3'], probeArgs: ['--version'] },
         { cmd: 'python3', args: [], probeArgs: ['--version'] },
         { cmd: 'python', args: [], probeArgs: ['--version'] },

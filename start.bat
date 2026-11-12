@@ -3,6 +3,13 @@ chcp 65001 >nul
 title CodeGuard AI
 cd /d "%~dp0"
 
+rem ---- Portable toolchains (self-contained bundle, no install needed) ----
+set "CG_TOOLS=%~dp0tools"
+if exist "%CG_TOOLS%\node\node.exe" set "PATH=%CG_TOOLS%\node;%PATH%"
+if exist "%CG_TOOLS%\python\python.exe" set "PATH=%CG_TOOLS%\python;%PATH%"
+if exist "%CG_TOOLS%\w64devkit\bin" set "PATH=%CG_TOOLS%\w64devkit\bin;%PATH%"
+if exist "%CG_TOOLS%\jdk\bin" set "PATH=%CG_TOOLS%\jdk\bin;%PATH%"
+
 where node >nul 2>nul
 if errorlevel 1 (
   echo.
