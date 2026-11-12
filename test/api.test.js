@@ -139,6 +139,29 @@ test('代码测试·离线静态检查：useLlm=false 不调大模型，问题�
   });
 });
 
+test('每请求大模型配置：访客自带密钥优先，且仅对本次请求生效', async () => {
+  await withServer(async (base) => {
+    const post = (headers) => fetch(`${base}/api/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body: JSON.stringify({ feature: 'fix', code: 'def f(:\n    pass\n', language: 'python' }),
+    });
+
+    // 自带配置（访客自己的 Key / 模型）应优先于服务器全局配置
+    const withOverride = await (await post({
+      'x-llm-provider': 'mock',
+      'x-llm-key': 'sk-visitor-self',
+      'x-llm-model': 'visitor-model',
+    })).json();
+    assert.equal(withOverride.llm.model, 'visitor-model', '应使用请求自带的模型配置');
+
+    // 未携带配置的请求不得被上一请求污染（配置不落盘、不共享）
+    const without = await (await post({})).json();
+    assert.notEqual(without.llm?.model, 'visitor-model', '自带配置不得影响后续请求');
+    assert.equal(without.engines.llm, true);
+  });
+});
+
 test('参数校验：非法 feature / 非法图片 / 空输入均返回 400', async () => {
   await withServer(async (base) => {
     const post = (body) => fetch(`${base}/api/completions`, {

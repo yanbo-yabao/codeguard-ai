@@ -64,9 +64,45 @@ function formatDuration(ms) {
   return `${(ms / 1000).toFixed(2)} 秒`;
 }
 
+/**
+ * 每位访客自己的大模型配置（仅存于本人浏览器 localStorage，不上传服务器）
+ * @returns {{provider?:string, apiKey?:string, model?:string, baseUrl?:string}|null}
+ */
+function loadLocalLlm() {
+  try {
+    const raw = localStorage.getItem('cgai-llm');
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+/** 保存访客自己的大模型配置（只影响本人浏览器） */
+function saveLocalLlm(cfg) {
+  try { localStorage.setItem('cgai-llm', JSON.stringify(cfg)); } catch { /* 隐私模式忽略 */ }
+}
+
+/** 清除访客本浏览器的大模型配置 */
+function clearLocalLlm() {
+  try { localStorage.removeItem('cgai-llm'); } catch { /* 隐私模式忽略 */ }
+}
+
+/** 把本地 Key 掩码为 sk-…abcd 形式（绝不完整展示） */
+function maskKey(key) {
+  if (!key) return '';
+  return key.length <= 8 ? `${key.slice(0, 2)}…` : `${key.slice(0, 3)}…${key.slice(-4)}`;
+}
+
 async function api(path, options = {}) {
+  // 涉及大模型的请求自动带上访客自己的配置（仅本次请求生效）
+  const localLlm = path === '/api/completions' ? loadLocalLlm() : null;
+  const llmHeaders = {};
+  if (localLlm) {
+    if (localLlm.provider) llmHeaders['x-llm-provider'] = String(localLlm.provider);
+    if (localLlm.apiKey) llmHeaders['x-llm-key'] = String(localLlm.apiKey);
+    if (localLlm.model) llmHeaders['x-llm-model'] = String(localLlm.model);
+    if (localLlm.baseUrl) llmHeaders['x-llm-base-url'] = String(localLlm.baseUrl);
+  }
   const res = await fetch(path, {
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    headers: { 'Content-Type': 'application/json', ...llmHeaders, ...(options.headers || {}) },
     ...options,
   });
   const text = await res.text();
@@ -966,20 +1002,23 @@ async function openSettings() {
     const select = $('#settings-provider');
     select.innerHTML = state.providers
       .map((item) => `<option value="${esc(item.key)}">${esc(item.label)}</option>`).join('');
-    select.value = snapshot.overrides?.provider || snapshot.llm?.provider || 'deepseek';
+    const local = loadLocalLlm() || {};
+    select.value = local.provider || snapshot.overrides?.provider || snapshot.llm?.provider || 'deepseek';
     if (!select.value) select.value = state.providers[0]?.key || '';
-    $('#settings-baseurl').value = snapshot.overrides?.baseUrl || snapshot.llm?.baseUrl || '';
-    $('#settings-model').value = snapshot.overrides?.model || snapshot.llm?.model || '';
-    $('#settings-key-hint').textContent = snapshot.llm?.apiKeyMasked
-      ? `已保存（${snapshot.llm.apiKeyMasked}），留空不修改`
-      : '未设置';
-    $('#settings-status').textContent = snapshot.llm?.available
-      ? `当前：${snapshot.llm.providerLabel} / ${snapshot.llm.model}（可用）`
-      : `当前未启用（${snapshot.llm?.reason || '未配置'}）`;
+    $('#settings-baseurl').value = local.baseUrl || snapshot.overrides?.baseUrl || snapshot.llm?.baseUrl || '';
+    $('#settings-model').value = local.model || snapshot.overrides?.model || snapshot.llm?.model || '';
+    $('#settings-key-hint').textContent = local.apiKey
+      ? `已保存在本浏览器（${maskKey(local.apiKey)}），留空不修改`
+      : '未设置（填你自己的 Key；留空则用服务器公共配置，若有）';
+    $('#settings-status').textContent = local.apiKey
+      ? `当前生效：你本浏览器的配置${local.model ? ` / ${local.model}` : ''}`
+      : (snapshot.llm?.available
+        ? `当前生效：服务器公共配置 ${snapshot.llm.providerLabel} / ${snapshot.llm.model}`
+        : `当前未启用（${snapshot.llm?.reason || '未配置'}）`);
     applyProviderDefaults();
-    $('#settings-baseurl').value = snapshot.overrides?.baseUrl || snapshot.llm?.baseUrl || $('#settings-baseurl').value;
-    $('#settings-model').value = snapshot.overrides?.model || snapshot.llm?.model || $('#settings-model').value;
-    $('#settings-note').textContent = '';
+    $('#settings-baseurl').value = local.baseUrl || snapshot.overrides?.baseUrl || snapshot.llm?.baseUrl || $('#settings-baseurl').value;
+    $('#settings-model').value = local.model || snapshot.overrides?.model || snapshot.llm?.model || $('#settings-model').value;
+    $('#settings-note').textContent = '密钥只保存在你自己的浏览器（localStorage），不上传服务器、不与他人共享；每位访客用自己的 Key。';
   } catch (error) {
     $('#settings-status').textContent = `读取失败：${error.message}`;
   }
@@ -988,23 +1027,23 @@ async function openSettings() {
 async function saveSettings() {
   setBusy('#btn-settings-save', null, true);
   try {
-    const apiKey = $('#settings-apikey').value.trim();
-    const snapshot = await api('/api/settings', {
-      method: 'POST',
-      body: JSON.stringify({
-        provider: $('#settings-provider').value,
-        baseUrl: $('#settings-baseurl').value.trim(),
-        model: $('#settings-model').value.trim(),
-        apiKey: apiKey || undefined,
-      }),
-    });
-    $('#settings-note').textContent = '已保存并立即生效';
-    $('#settings-key-hint').textContent = snapshot.llm?.apiKeyMasked
-      ? `已保存（${snapshot.llm.apiKeyMasked}），留空不修改`
-      : '未设置';
+    // 保存到本人浏览器 localStorage（每位访客用自己的 Key，不上传、不共享）
+    const previous = loadLocalLlm() || {};
+    const apiKeyInput = $('#settings-apikey').value.trim();
+    const cfg = {
+      provider: $('#settings-provider').value,
+      baseUrl: $('#settings-baseurl').value.trim(),
+      model: $('#settings-model').value.trim(),
+      apiKey: apiKeyInput || previous.apiKey || '',
+    };
+    saveLocalLlm(cfg);
+    $('#settings-note').textContent = '已保存在你自己的浏览器（只对你生效，不会上传服务器）';
+    $('#settings-key-hint').textContent = cfg.apiKey
+      ? `已保存在本浏览器（${maskKey(cfg.apiKey)}），留空不修改`
+      : '未设置（不填 Key 则使用服务器公共配置，若有）';
     $('#settings-apikey').value = '';
     refreshBadges();
-    toast('设置已保存并生效');
+    toast('已保存到你的浏览器，只对你生效');
   } catch (error) {
     $('#settings-note').textContent = `保存失败：${error.message}`;
   } finally {
@@ -1022,7 +1061,7 @@ async function testSettings() {
         provider: $('#settings-provider').value,
         baseUrl: $('#settings-baseurl').value.trim(),
         model: $('#settings-model').value.trim(),
-        apiKey: $('#settings-apikey').value.trim() || undefined,
+        apiKey: $('#settings-apikey').value.trim() || loadLocalLlm()?.apiKey || undefined,
       }),
     });
     $('#settings-note').textContent = result.ok === false
@@ -1038,11 +1077,11 @@ async function testSettings() {
 async function resetSettings() {
   setBusy('#btn-settings-reset', null, true);
   try {
-    await api('/api/settings', { method: 'DELETE' });
-    $('#settings-note').textContent = '已清除，回到 .env 配置';
+    clearLocalLlm();
+    $('#settings-note').textContent = '已清除本浏览器保存的配置';
     refreshBadges();
     openSettings();
-    toast('已清除大模型设置');
+    toast('已清除你的浏览器配置');
   } catch (error) {
     $('#settings-note').textContent = `清除失败：${error.message}`;
   } finally {
@@ -1061,7 +1100,10 @@ async function refreshBadges() {
   try {
     const snapshot = await api('/api/settings');
     const llm = snapshot.llm || {};
-    $('#footer-model').textContent = llm.available ? `${llm.providerLabel} / ${llm.model}` : '未配置大模型（运行/判题/调试不受影响）';
+    const local = loadLocalLlm();
+    $('#footer-model').textContent = local?.apiKey
+      ? `${local.provider || llm.providerLabel || '大模型'} / ${local.model || llm.model || ''}（本浏览器配置）`
+      : llm.available ? `${llm.providerLabel} / ${llm.model}` : '未配置大模型（运行/判题/调试不受影响）';
   } catch { /* 静默 */ }
 
   try {
