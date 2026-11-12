@@ -1,0 +1,13 @@
+{
+  "name": "CodeGuard AI",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:20",
+  "postCreateCommand": "sudo apt-get update -y && sudo apt-get install -y python3 gcc g++ default-jdk-headless",
+  "postStartCommand": "bash -c 'HOST=0.0.0.0 PORT=8848 nohup node src/server.js > /tmp/codeguard.log 2>&1 &'",
+  "forwardPorts": [8848],
+  "portsAttributes": {
+    "8848": {
+      "label": "CodeGuard AI",
+      "onAutoForward": "openBrowser"
+    }
+  }
+}
