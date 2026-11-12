@@ -12,7 +12,7 @@ const assert = require('node:assert/strict');
 const http = require('node:http');
 
 const { LlmClient, parseJsonLoose } = require('../src/agents/llm-client');
-const { buildSummaryPrompt, buildReviewPrompt } = require('../src/agents/prompt-templates');
+const { buildDiagnosePrompt, buildQuizPrompt } = require('../src/agents/prompt-templates');
 
 /**
  * 启动一个本地模拟接口服务
@@ -243,9 +243,8 @@ test('离线模拟器：同一输入产出确定性结果', async () => {
   assert.equal(client.available, true);
   assert.equal(client.isMock, true);
 
-  const messages = buildReviewPrompt({
-    role: 'security',
-    code: 'const API_KEY = "sk-abcdef123456";\neval(x);\n',
+  const messages = buildDiagnosePrompt({
+    code: 'function f() {\n  const a = 1\n  console.log(a\n',
     language: 'JavaScript',
   });
 
@@ -253,26 +252,27 @@ test('离线模拟器：同一输入产出确定性结果', async () => {
   const second = await client.chatJson({ messages });
 
   assert.deepEqual(first.findings, second.findings, '模拟器输出必须完全一致');
-  assert.ok(first.findings.length >= 2);
+  assert.ok(first.findings.length >= 1);
   assert.ok(first.findings.every((item) => item.line >= 1 && item.title && item.message));
 });
 
-test('离线模拟器：识别总结类请求并返回汇报结构', async () => {
+test('离线模拟器：识别变式出题请求并返回题面结构', async () => {
   const client = new LlmClient({ provider: 'mock' });
-  const messages = buildSummaryPrompt({
-    score: { overall: 62, grade: 'C', dimensions: { security: '50', bug: '80' } },
-    issues: [
-      { severity: 'blocker', line: 12, title: '硬编码凭据' },
-      { severity: 'major', line: 30, title: '循环内串行等待' },
-    ],
-    metrics: { totalLines: 100, functionCount: 5, maxComplexity: 8 },
+  const messages = buildQuizPrompt({
+    prompt: '两数之和',
+    language: 'Python',
   });
 
-  const payload = await client.chatJson({ messages });
-  assert.ok(typeof payload.overview === 'string' && payload.overview.length > 0);
-  assert.ok(Array.isArray(payload.blockers));
-  assert.ok(payload.blockers.some((item) => item.includes('硬编码凭据')));
-  assert.ok(Array.isArray(payload.actions));
+  const first = await client.chatJson({ messages });
+  const second = await client.chatJson({ messages });
+
+  assert.equal(first.title, second.title);
+  assert.ok(typeof first.title === 'string' && first.title.length > 0);
+  assert.ok(typeof first.description === 'string' && first.description.length > 0);
+  assert.ok(Array.isArray(first.testCases) && first.testCases.length >= 3);
+  assert.ok(first.testCases.every((item) => typeof item.input === 'string' && typeof item.expected === 'string'));
+  assert.ok(typeof first.referenceSolution === 'string' && first.referenceSolution.length > 0);
+  assert.deepEqual(first.testCases, second.testCases);
 });
 
 test('离线模拟器：调用会计入用量统计但不产生 token 消耗', async () => {

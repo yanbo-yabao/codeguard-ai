@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CodeGuard AI · 智能代码审查台</title>
-<meta name="description" content="CodeGuard AI —— 面向开发者的 AI 代码审查 Agent：规则引擎静态分析 + 多角色大模型评审 + 可视化评分报告">
+<title>CodeGuard AI · AI 编程学习助手</title>
+<meta name="description" content="CodeGuard AI —— AI 编程学习助手：提问 / 拍题得讲解与代码，变式练习在线判题，逐行调试定位问题">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/assets/style.css">
 </head>
@@ -16,16 +16,16 @@
     </svg>
     <div>
       <h1>CodeGuard <span>AI</span></h1>
-      <p>智能代码审查台 · 规则引擎 + 多角色大模型评审</p>
+      <p>AI 编程学习助手 · 解题 / 补全 / 练习 / 调试</p>
     </div>
   </div>
   <div class="topbar-right">
     <div class="badge-group" id="env-badges">
       <span class="badge badge-muted" id="badge-version">版本加载中…</span>
-      <span class="badge badge-muted" id="badge-llm">大模型检测中…</span>
-      <span class="badge badge-muted" id="badge-rules">规则加载中…</span>
     </div>
-    <button class="btn btn-ghost btn-sm" type="button" id="btn-settings">⚙ 设置大模型</button>
+    <button class="btn btn-ghost btn-sm" type="button" id="btn-theme">深色模式</button>
+    <button class="btn btn-ghost btn-sm" type="button" id="btn-help">使用说明</button>
+    <button class="btn btn-ghost btn-sm" type="button" id="btn-settings">设置大模型</button>
     <nav class="topnav">
       <a href="/api/meta/routes" target="_blank" rel="noopener">接口清单</a>
       <a href="/api/meta/rules" target="_blank" rel="noopener">规则清单</a>
@@ -38,50 +38,59 @@
   <!-- ==================== 输入区 ==================== -->
   <section class="card card-input" id="card-input">
     <div class="card-head">
-      <h2>提交代码</h2>
+      <h2 id="input-card-title">AI 解题与补全</h2>
       <button class="btn btn-ghost btn-sm" type="button" id="btn-collapse">收起</button>
     </div>
 
-    <div class="tabs tabs-sm" role="tablist">
-      <button class="tab active" data-source="paste" type="button" role="tab">粘贴代码</button>
-      <button class="tab" data-source="upload" type="button" role="tab">上传文件</button>
-      <button class="tab" data-source="sample" type="button" role="tab">示例样本</button>
+    <!-- 工作模式切换：AI 解题与补全 / 代码测试 / 错误检查与修复 -->
+    <div class="tabs mode-tabs" id="mode-tabs" role="tablist">
+      <button class="tab active" data-mode="complete" type="button" role="tab">AI 解题与补全</button>
+      <button class="tab" data-mode="practice" type="button" role="tab">代码测试</button>
+      <button class="tab" data-mode="fix" type="button" role="tab">错误检查与修复</button>
     </div>
 
-    <div class="source-panel" id="panel-paste">
+    <!-- ==================== 解题与补全面板 ==================== -->
+    <div id="mode-complete-body">
       <label class="field">
-        <span class="field-label">文件名（用于自动识别语言）</span>
-        <input type="text" id="input-filename" value="demo.js" placeholder="例如 user-service.js / handler.py / Service.java">
+        <span class="field-label">问题 / 需求（必填，一句话说清楚就行）</span>
+        <textarea id="input-prompt" placeholder="例如：这道题怎么做？已知一个数组求两数之和等于目标值的下标…&#10;或者：实现一个快速排序函数，要求支持自定义比较器…"></textarea>
       </label>
+
+      <div class="field">
+        <span class="field-label">图片提问（可选）—— 题目截图 / 报错截图 / 手写笔记</span>
+        <div class="dropzone" id="image-dropzone">
+          <input type="file" id="input-image" class="hidden" accept="image/png,image/jpeg,image/gif,image/webp">
+          <svg class="dropzone-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/>
+          </svg>
+          <p class="dropzone-title">点击选择图片，或把图片拖到这里</p>
+          <p class="dropzone-sub">支持 png / jpeg / gif / webp，约 6MB 以内；配图提问需要支持视觉的大模型（如 Kimi K3、GLM-4V）</p>
+        </div>
+        <div class="image-preview hidden" id="image-preview">
+          <img id="image-preview-img" alt="已上传的图片">
+          <div class="image-preview-meta">
+            <span id="image-preview-name"></span>
+            <button class="btn btn-ghost btn-sm" type="button" id="btn-image-remove">移除图片</button>
+          </div>
+        </div>
+      </div>
+
       <label class="field">
         <span class="field-label">
-          源码内容
-          <span class="hint" id="code-stats">0 行 · 0 字符</span>
+          现有代码（可留空，从零生成）
+          <button class="btn-format" type="button" data-format="input-complete-code" data-lang="select-complete-language">格式化</button>
+          <span class="hint" id="complete-stats">0 行 · 0 字符</span>
         </span>
-        <textarea id="input-code" spellcheck="false" placeholder="在此粘贴待审查的代码…"></textarea>
+        <div class="editor">
+          <div class="editor-gutter" aria-hidden="true"></div>
+          <textarea id="input-complete-code" spellcheck="false" placeholder="在此粘贴现有或未完成的代码，AI 将补全为完整实现…"></textarea>
+        </div>
       </label>
-    </div>
 
-    <div class="source-panel hidden" id="panel-upload">
-      <div class="dropzone" id="dropzone">
-        <input type="file" id="input-file" class="hidden" multiple>
-        <p class="dropzone-title">点击选择文件，或将文件拖拽到此处</p>
-        <p class="dropzone-sub">支持一次提交多个文件，系统将逐个审查（单文件上限 800 KB）</p>
-      </div>
-      <ul class="file-list" id="file-list"></ul>
-    </div>
-
-    <div class="source-panel hidden" id="panel-sample">
-      <p class="field-label">内置示例（覆盖典型缺陷，可直接用于演示）</p>
-      <div class="sample-grid" id="sample-grid"></div>
-    </div>
-
-    <details class="options" open>
-      <summary>审查选项</summary>
       <div class="options-body">
         <label class="field">
           <span class="field-label">编程语言</span>
-          <select id="select-language">
+          <select id="select-complete-language">
             <option value="">自动识别（推荐）</option>
             <option value="javascript">JavaScript</option>
             <option value="typescript">TypeScript</option>
@@ -97,47 +106,124 @@
             <option value="sql">SQL</option>
           </select>
         </label>
-
         <label class="field">
-          <span class="field-label">最低报告级别</span>
-          <select id="select-min-severity">
-            <option value="">全部级别</option>
-            <option value="info">建议及以上</option>
-            <option value="minor">次要及以上</option>
-            <option value="major">主要及以上</option>
-            <option value="critical">严重及以上</option>
-            <option value="blocker">仅阻断</option>
-          </select>
+          <span class="field-label">文件名（可选，用于自动识别语言）</span>
+          <input type="text" id="input-complete-filename" placeholder="例如 sort.js / main.py">
         </label>
-
-        <div class="field">
-          <span class="field-label">启用大模型角色</span>
-          <div class="checkbox-row" id="role-checkboxes">
-            <label><input type="checkbox" value="security" checked><span>安全审计</span></label>
-            <label><input type="checkbox" value="bug" checked><span>缺陷检测</span></label>
-            <label><input type="checkbox" value="performance" checked><span>性能优化</span></label>
-            <label><input type="checkbox" value="readability" checked><span>可维护性</span></label>
-          </div>
-        </div>
-
         <div class="field">
           <span class="field-label">开关</span>
           <div class="checkbox-row">
-            <label><input type="checkbox" id="opt-llm" checked><span>启用大模型语义评审</span></label>
-            <label><input type="checkbox" id="opt-fixes" checked><span>生成修复建议</span></label>
-            <label><input type="checkbox" id="opt-summary" checked><span>生成结论摘要</span></label>
+            <label><input type="checkbox" id="opt-complete-llm" checked><span>启用 AI 解题</span></label>
           </div>
         </div>
       </div>
-    </details>
 
-    <div class="actions">
-      <button class="btn btn-primary" type="button" id="btn-review">
-        <span class="spinner hidden" id="review-spinner"></span>
-        <span id="review-label">开始智能审查</span>
-      </button>
-      <button class="btn btn-ghost" type="button" id="btn-clear">清空</button>
-      <span class="actions-note" id="review-note"></span>
+      <div class="actions">
+        <button class="btn btn-primary" type="button" id="btn-complete">
+          <span class="spinner hidden" id="complete-spinner"></span>
+          <span id="complete-label">开始解题 / 补全</span>
+        </button>
+        <button class="btn btn-ghost" type="button" id="btn-complete-clear">清空</button>
+        <span class="actions-note" id="complete-note"></span>
+      </div>
+    </div>
+
+    <!-- ==================== 代码测试面板 ==================== -->
+    <div id="mode-practice-body" class="hidden">
+      <div class="field">
+        <span class="field-label">
+          代码编辑区（在这里写你的解答 / 要运行的代码）
+          <button class="btn-format" type="button" data-format="practice-code" data-lang="select-practice-language">格式化</button>
+          <span class="hint" id="practice-stats">0 行 · 0 字符</span>
+        </span>
+        <div class="editor">
+          <div class="editor-gutter" aria-hidden="true"></div>
+          <textarea id="practice-code" spellcheck="false" placeholder="在这里写代码…&#10;程序从标准输入读入、向标准输出写出（和 OJ 一样）。&#10;写完点「运行」看输出。"></textarea>
+        </div>
+      </div>
+
+      <div class="options-body">
+        <label class="field">
+          <span class="field-label">语言（自动探测本机可用；运行真实执行）</span>
+          <select id="select-practice-language">
+            <option value="javascript">JavaScript</option>
+            <option value="python">Python</option>
+            <option value="cpp">C++</option>
+            <option value="c">C</option>
+            <option value="java">Java</option>
+          </select>
+        </label>
+        <label class="field">
+          <span class="field-label">标准输入（运行时喂给程序的数据）</span>
+          <textarea id="practice-stdin" placeholder="例如：&#10;1 2"></textarea>
+        </label>
+      </div>
+
+      <div class="actions">
+        <button class="btn btn-primary" type="button" id="btn-practice-run">
+          <span class="spinner hidden" id="practice-run-spinner"></span>
+          <span>运行</span>
+        </button>
+        <button class="btn btn-ghost" type="button" id="btn-practice-clear">清空</button>
+        <span class="actions-note" id="practice-note">运行在服务端真实执行，超时 30 秒自动终止；运行时自动离线检查错误，逐条给出修改建议</span>
+      </div>
+    </div>
+
+    <!-- ==================== 错误检查与修复面板 ==================== -->
+    <div id="mode-fix-body" class="hidden">
+      <label class="field">
+        <span class="field-label">
+          待检查的代码（必填）
+          <button class="btn-format" type="button" data-format="input-fix-code" data-lang="select-fix-language">格式化</button>
+          <span class="hint" id="fix-stats">0 行 · 0 字符</span>
+        </span>
+        <div class="editor">
+          <div class="editor-gutter" aria-hidden="true"></div>
+          <textarea id="input-fix-code" spellcheck="false" placeholder="在此粘贴有错误的代码，AI 将指出每条错误如何修改，并给出修复后的完整代码…"></textarea>
+        </div>
+      </label>
+      <label class="field">
+        <span class="field-label">期望行为描述（可选，帮助 AI 理解代码本来该做什么）</span>
+        <textarea id="input-fix-intent" placeholder="例如：这个函数应该返回数组的长度，参数为空时返回 0…"></textarea>
+      </label>
+      <div class="options-body">
+        <label class="field">
+          <span class="field-label">编程语言</span>
+          <select id="select-fix-language">
+            <option value="">自动识别（推荐）</option>
+            <option value="javascript">JavaScript</option>
+            <option value="typescript">TypeScript</option>
+            <option value="python">Python</option>
+            <option value="java">Java</option>
+            <option value="go">Go</option>
+            <option value="c">C</option>
+            <option value="cpp">C++</option>
+            <option value="csharp">C#</option>
+            <option value="php">PHP</option>
+            <option value="ruby">Ruby</option>
+            <option value="shell">Shell</option>
+            <option value="sql">SQL</option>
+          </select>
+        </label>
+        <label class="field">
+          <span class="field-label">文件名（可选，用于自动识别语言）</span>
+          <input type="text" id="input-fix-filename" placeholder="例如 broken.js / main.py">
+        </label>
+        <div class="field">
+          <span class="field-label">开关</span>
+          <div class="checkbox-row">
+            <label><input type="checkbox" id="opt-fix-llm" checked><span>启用 AI 诊断与修复（关闭后仅做静态语法检查）</span></label>
+          </div>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn btn-primary" type="button" id="btn-fix">
+          <span class="spinner hidden" id="fix-spinner"></span>
+          <span id="fix-label">开始检查与修复</span>
+        </button>
+        <button class="btn btn-ghost" type="button" id="btn-fix-clear">清空</button>
+        <span class="actions-note" id="fix-note"></span>
+      </div>
     </div>
   </section>
 
@@ -147,100 +233,178 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true">
         <path d="M9 4 4 12l5 8M15 4l5 8-5 8" stroke-linecap="round"/>
       </svg>
-      <h3>尚未发起审查</h3>
-      <p>粘贴代码或选择右侧示例，点击「开始智能审查」查看结果</p>
+      <h3 id="empty-title">还没有开始</h3>
+      <p id="empty-hint">左边输入问题或代码，点按钮开始</p>
+      <p><button class="btn btn-ghost btn-sm" type="button" id="btn-help-empty">第一次使用？点这里看使用说明 →</button></p>
     </div>
 
-    <div class="hidden" id="result-body">
-      <!-- 评分概览 -->
-      <div class="score-row">
-        <div class="card card-score">
-          <div class="card-head"><h2>综合得分</h2><span class="badge" id="badge-grade">-</span></div>
-          <div class="gauge-wrap">
-            <div id="chart-gauge"></div>
-            <div class="gauge-meta">
-              <p class="gauge-advice" id="score-advice"></p>
-              <dl class="kv">
-                <div><dt>审查语言</dt><dd id="meta-language">-</dd></div>
-                <div><dt>代码规模</dt><dd id="meta-size">-</dd></div>
-                <div><dt>问题总数</dt><dd id="meta-issues">-</dd></div>
-                <div><dt>审查耗时</dt><dd id="meta-duration">-</dd></div>
-              </dl>
-            </div>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card-head"><h2>五维评分</h2></div>
-          <div id="chart-radar"></div>
-        </div>
-
-        <div class="card">
-          <div class="card-head"><h2>问题分布</h2></div>
-          <div id="chart-severity"></div>
-          <div class="divider"></div>
-          <div id="chart-dimension"></div>
-        </div>
-      </div>
-
-      <div class="card card-summary hidden" id="card-summary">
+    <!-- 解题补全 / 错误修复结果 -->
+    <div class="hidden" id="completion-body">
+      <div class="card hidden" id="answer-card">
         <div class="card-head">
-          <h2>结论摘要</h2>
-          <span class="badge badge-muted" id="summary-source"></span>
+          <h2>解题讲解</h2>
+          <button class="btn btn-primary btn-sm hidden" type="button" id="btn-quiz">出题测试我</button>
         </div>
-        <p id="summary-overview"></p>
-        <div class="summary-grid">
-          <div>
-            <h4>必须在合入前解决</h4>
-            <ul id="summary-blockers"></ul>
-          </div>
-          <div>
-            <h4>建议后续动作</h4>
-            <ul id="summary-actions"></ul>
-          </div>
-        </div>
-        <div id="summary-roles"></div>
-        <div class="warnings hidden" id="warning-box"></div>
+        <div class="answer-text" id="answer-text"></div>
       </div>
 
-      <div class="card card-tabs">
-        <div class="tabs">
-          <button class="tab active" data-view="issues" type="button">问题清单 <span class="count" id="count-issues">0</span></button>
-          <button class="tab" data-view="fixes" type="button">修复建议 <span class="count" id="count-fixes">0</span></button>
-          <button class="tab" data-view="metrics" type="button">代码度量</button>
-          <button class="tab" data-view="history" type="button">评审历史</button>
-        </div>
-
-        <!-- 问题清单 -->
-        <div class="tab-panel active" id="view-issues">
-          <div class="filters">
-            <div class="filter-group" id="filter-severity"></div>
-            <div class="filter-group" id="filter-source"></div>
-            <input type="search" class="filter-search" id="filter-keyword" placeholder="按标题 / 规则 / 消息筛选…">
-            <div class="export-group">
-              <span class="field-label">导出报告</span>
-              <button class="btn btn-ghost btn-sm" data-export="markdown" type="button">Markdown</button>
-              <button class="btn btn-ghost btn-sm" data-export="html" type="button">HTML</button>
-              <button class="btn btn-ghost btn-sm" data-export="sarif" type="button">SARIF</button>
-              <button class="btn btn-ghost btn-sm" data-export="json" type="button">JSON</button>
-            </div>
+      <div class="score-row">
+        <div class="card">
+          <div class="card-head">
+            <h2 id="complete-badge-title">结论</h2>
+            <span class="badge" id="complete-badge">-</span>
           </div>
-          <ul class="issue-list" id="issue-list"></ul>
+          <p id="complete-summary"></p>
+          <dl class="kv" id="complete-kv"></dl>
+          <div class="warnings hidden" id="complete-warnings"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>执行引擎</h2></div>
+          <dl class="kv" id="complete-engines"></dl>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2 id="complete-issues-title">语法问题与修改建议</h2>
+          <span class="count" id="complete-issue-count">0</span>
+        </div>
+        <ul class="issue-list" id="complete-issue-list"></ul>
+      </div>
+
+      <div class="card hidden" id="complete-code-card">
+        <div class="card-head">
+          <h2 id="complete-code-title">完整代码</h2>
+          <button class="btn btn-ghost btn-sm" type="button" id="btn-copy-code">复制代码</button>
+        </div>
+        <ul class="tests" id="complete-notes"></ul>
+        <pre class="code-output" id="complete-code"></pre>
+      </div>
+
+      <!-- ==================== 变式题测试（解题流程内嵌：出题 → 答题 → 判题） ==================== -->
+      <div class="card hidden" id="quiz-section">
+        <div class="card-head">
+          <h2 id="quiz-title">变式题测试（检验你掌握了吗）</h2>
+          <div class="actions">
+            <button class="btn btn-ghost btn-sm" type="button" id="btn-quiz-hint">看提示</button>
+            <button class="btn btn-ghost btn-sm" type="button" id="btn-quiz-answer">看参考答案</button>
+          </div>
+        </div>
+        <div class="answer-text" id="quiz-desc"></div>
+        <div class="warnings hidden" id="quiz-hints"></div>
+        <div class="hidden" id="quiz-answer-box">
+          <div class="divider"></div>
+          <p class="field-label">参考答案（先自己做再看）</p>
+          <pre class="code-output" id="quiz-answer-code"></pre>
         </div>
 
-        <!-- 修复建议 -->
-        <div class="tab-panel" id="view-fixes">
-          <div id="fix-list"></div>
+        <div class="divider"></div>
+        <div class="field">
+          <span class="field-label">
+            你的解答（写完点下面的按钮测试）
+            <button class="btn-format" type="button" data-format="quiz-code" data-lang="quiz-language">格式化</button>
+            <span class="hint" id="quiz-stats">0 行 · 0 字符</span>
+          </span>
+          <div class="editor">
+            <div class="editor-gutter" aria-hidden="true"></div>
+            <textarea id="quiz-code" spellcheck="false" placeholder="在这里写你的解答…程序从标准输入读入、向标准输出写出（和 OJ 一样）。"></textarea>
+          </div>
         </div>
-
-        <!-- 代码度量 -->
-        <div class="tab-panel" id="view-metrics">
-          <div id="metrics-body"></div>
+        <div class="options-body">
+          <label class="field">
+            <span class="field-label">语言</span>
+            <select id="quiz-language">
+              <option value="javascript">JavaScript</option>
+              <option value="python">Python</option>
+              <option value="cpp">C++</option>
+              <option value="c">C</option>
+              <option value="java">Java</option>
+            </select>
+          </label>
+          <label class="field">
+            <span class="field-label">标准输入（单次运行 / 调试时用）</span>
+            <input type="text" id="quiz-stdin" placeholder="例如：1 2">
+          </label>
         </div>
+        <div class="actions">
+          <button class="btn" type="button" id="btn-quiz-run">
+            <span class="spinner hidden" id="quiz-run-spinner"></span><span>运行</span>
+          </button>
+          <button class="btn btn-primary" type="button" id="btn-quiz-judge">
+            <span class="spinner hidden" id="quiz-judge-spinner"></span><span>自动判题</span>
+          </button>
+          <button class="btn" type="button" id="btn-quiz-debug">
+            <span class="spinner hidden" id="quiz-debug-spinner"></span><span>调试运行</span>
+          </button>
+          <span class="actions-note" id="quiz-note">按题目自带的测试用例自动判题，逐组给出通过 / 不通过</span>
+        </div>
+      </div>
 
-        <!-- 历史记录 -->
-        <div class="tab-panel" id="view-history">
-          <div id="history-body"></div>
+      <div class="card hidden" id="quiz-run-card">
+        <div class="card-head">
+          <h2>运行结果</h2>
+          <span class="badge" id="quiz-run-badge">-</span>
+        </div>
+        <div class="error-banner hidden" id="quiz-run-error-banner"></div>
+        <dl class="kv" id="quiz-run-kv"></dl>
+        <div class="run-io">
+          <div>
+            <p class="field-label">标准输出</p>
+            <pre class="code-output" id="quiz-run-stdout"></pre>
+          </div>
+          <div>
+            <p class="field-label">错误信息</p>
+            <pre class="code-output" id="quiz-run-stderr"></pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="card hidden" id="quiz-judge-card">
+        <div class="card-head">
+          <h2>判题结果</h2>
+          <span class="badge" id="quiz-judge-badge">-</span>
+        </div>
+        <p id="quiz-judge-summary"></p>
+        <table class="judge-table" id="quiz-judge-table"></table>
+      </div>
+
+      <div class="card hidden" id="quiz-debug-card">
+        <div class="card-head">
+          <h2>调试轨迹（逐行执行记录）</h2>
+          <span class="badge" id="quiz-debug-badge">-</span>
+        </div>
+        <p id="quiz-debug-summary"></p>
+        <table class="judge-table" id="quiz-debug-table"></table>
+      </div>
+    </div>
+
+    <!-- 代码测试结果 -->
+    <div class="hidden" id="practice-body">
+      <div class="card hidden" id="check-card">
+        <div class="card-head">
+          <h2>静态检查（离线）· 问题与修改建议</h2>
+          <span class="badge badge-warn" id="check-badge">离线</span>
+        </div>
+        <p id="check-summary"></p>
+        <ul class="issue-list" id="check-issue-list"></ul>
+      </div>
+
+      <div class="card hidden" id="run-card">
+        <div class="card-head">
+          <h2>运行结果</h2>
+          <span class="badge" id="run-badge">-</span>
+        </div>
+        <div class="error-banner hidden" id="run-error-banner"></div>
+        <dl class="kv" id="run-kv"></dl>
+        <div class="run-io">
+          <div>
+            <p class="field-label">标准输出</p>
+            <pre class="code-output" id="run-stdout"></pre>
+          </div>
+          <div>
+            <p class="field-label">错误信息</p>
+            <pre class="code-output" id="run-stderr"></pre>
+          </div>
         </div>
       </div>
     </div>
@@ -248,11 +412,11 @@
 </main>
 
 <footer class="footer">
-  <span>CodeGuard AI · 面向开发者的 AI 代码审查 Agent</span>
+  <span>CodeGuard AI · AI 编程学习助手</span>
   <span class="dot-sep">·</span>
   <span id="footer-model">-</span>
   <span class="dot-sep">·</span>
-  <span>静态规则引擎离线可用，大模型评审可选启用</span>
+  <span>代码在本机运行；开启大模型后代码才会发给你配置的 AI 服务</span>
 </footer>
 
 <!-- ==================== 大模型设置面板 ==================== -->
@@ -264,7 +428,8 @@
     </div>
 
     <p class="modal-intro">
-      在这里选择大模型并填写<b>你自己的 API Key</b>。设置仅保存在本机
+      在这里选择大模型（支持 <b>DeepSeek / Kimi / 智谱 / 通义 / 火山方舟 / 腾讯混元 / Ollama 本地</b>
+      等 12 家，选中即自动填好接口地址）并填写<b>你自己的 API Key</b>。设置仅保存在本机
       <code>data/settings.json</code>，不会上传、也不会进入代码版本库。
       留空密钥表示不修改已保存的值。
     </p>
@@ -275,6 +440,7 @@
       <span class="field-label">供应商</span>
       <select id="settings-provider"></select>
     </label>
+    <p class="field-note" id="settings-provider-note"></p>
 
     <label class="field">
       <span class="field-label">接口地址（Base URL）</span>
@@ -283,7 +449,7 @@
 
     <label class="field">
       <span class="field-label">模型名</span>
-      <input type="text" id="settings-model" placeholder="deepseek-flash">
+      <input type="text" id="settings-model" placeholder="deepseek-chat">
     </label>
 
     <label class="field">
@@ -304,10 +470,92 @@
   </div>
 </div>
 
+<!-- ==================== 使用说明（新手引导） ==================== -->
+<div class="modal-mask hidden" id="help-mask">
+  <div class="modal modal-help" role="dialog" aria-modal="true" aria-labelledby="help-title">
+    <div class="modal-head">
+      <h2 id="help-title">使用说明 · 跟着点就行，不需要懂技术</h2>
+      <button class="btn btn-ghost btn-sm" type="button" id="btn-help-close">关闭</button>
+    </div>
+
+    <p class="modal-intro">
+      本工具在<b>你自己的电脑上</b>运行。下面是三个功能，各三步。
+    </p>
+
+    <div class="help-section">
+      <h3>① 问问题、拍题目，AI 给你讲解 + 代码（AI 解题与补全）</h3>
+      <ol class="help-steps">
+        <li>在「问题 / 需求」框里写下你的问题，比如 <code>这道题怎么做？…</code>；
+          如果题目是截图或手写照片，点下面的<b>图片区</b>上传（AI 能看图解题）</li>
+        <li>点「<b>开始解题 / 补全</b>」，等 10~60 秒</li>
+        <li>结果里有两样东西：<b>解题讲解</b>（思路 + 每一步为什么这么做）和
+          <b>完整代码</b>（点「复制代码」拿走）</li>
+      </ol>
+      <p class="help-tip">💡 学完想练？点结果里的「<b>出题测试我</b>」按钮，AI 会按这道题出一道变式题考你。</p>
+    </div>
+
+    <div class="help-section">
+      <h3>② 做变式题、真实运行判题（学完就练）</h3>
+      <ol class="help-steps">
+        <li>在解题结果里点「<b>出题测试我</b>」，变式题（题面 + 提示 + 参考答案）直接出现在下方</li>
+        <li>在「你的解答」框里写代码（程序从<b>标准输入</b>读入、<b>标准输出</b>写出，和 OJ 一样）</li>
+        <li>点「<b>自动判题</b>」：系统会用题目自带的多组测试用例真实运行你的代码，逐组告诉你
+          <b>通过 / 不通过</b>，不通过的显示「期望输出 vs 实际输出」</li>
+      </ol>
+      <p class="help-tip">💡 只想跑一下代码？点「<b>运行</b>」；想看代码一步步怎么执行的？点「<b>调试运行</b>」。</p>
+      <p class="help-tip">💡 不问问题也想跑代码？切到顶部「<b>代码测试</b>」标签，粘贴任意代码即可运行看输出。</p>
+    </div>
+
+    <div class="help-section">
+      <h3>③ 调试运行：看代码一行一行怎么跑的</h3>
+      <ol class="help-steps">
+        <li>点「<b>调试运行</b>」后，结果里有一张<b>调试轨迹表</b>：
+          每一行代码<b>执行了几次</b>（循环体能看到执行多次）、<b>每次执行时变量的值</b></li>
+        <li>程序报错时，「错误信息」里会显示<b>第几行出错</b>和原因</li>
+      </ol>
+      <p class="help-tip">💡 用它排查「死循环」「变量值不对」这类问题最直观。</p>
+    </div>
+
+    <div class="help-section">
+      <h3>④ 错误检查与修复：把有错的代码改对</h3>
+      <ol class="help-steps">
+        <li>点顶部「<b>错误检查与修复</b>」标签，把有错误的代码贴进大框</li>
+        <li>点「<b>开始检查与修复</b>」</li>
+        <li>结果里有<b>每条错误的修改方法</b>（改哪行、怎么改）和<b>修复后的完整代码</b></li>
+      </ol>
+    </div>
+
+    <div class="help-section">
+      <h3>⑤ 重要：什么是"演示模式"，什么是"真实 AI"</h3>
+      <ul class="help-list">
+        <li><b>没填 API Key（默认状态）</b>：「运行 / 判题 / 调试」是<b>真实执行</b>的（离线可用），
+          「错误检查与修复」的静态检查也是真实的；但解题讲解和出题是<b>演示占位</b>，只用于看流程</li>
+        <li><b>想用真实 AI</b>：点右上角「<b>⚙ 设置大模型</b>」→ 供应商下拉框选一家 →
+          粘贴你自己的 API Key → 点「测试连接」→ 点「保存并生效」。<b>保存后立即生效</b>，不用重启</li>
+        <li><b>拍图提问</b>需要支持看图的模型（如 Kimi K3、GLM-4V 系列）；普通模型只能文字提问</li>
+        <li>API Key 需要自己申请，密钥只保存在你自己的电脑上，不会进入代码库</li>
+      </ul>
+    </div>
+
+    <div class="help-section">
+      <h3>⑥ 常见问题</h3>
+      <ul class="help-list">
+        <li><b>会不会很慢？</b>运行 / 判题 / 调试 1~5 秒出结果；AI 解题 10~60 秒</li>
+        <li><b>我的代码安全吗？</b>运行在本机独立进程里，超时 30 秒自动终止；
+          只有开启大模型时，代码才会发送给你自己配置的 AI 服务</li>
+        <li><b>快捷键：</b>按 <code>Ctrl + Enter</code> 可以快速提交当前任务</li>
+        <li><b>点错了 / 想重来：</b>点「清空」按钮即可重新开始</li>
+      </ul>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-primary" type="button" id="btn-help-ok">知道了，开始使用</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
-<script src="/assets/charts.js"></script>
-<script src="/assets/samples.js"></script>
 <script src="/assets/app.js"></script>
 </body>
 </html>

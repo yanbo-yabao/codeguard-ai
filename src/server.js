@@ -11,7 +11,6 @@ const config = require('./config');
 const logger = require('./core/logger');
 const { createHttpServer } = require('./core/http/app');
 const { buildRoutes } = require('./routes');
-const { store } = require('./core/storage');
 const settingsStore = require('./core/settings-store');
 
 const log = logger.child('server');
@@ -30,9 +29,9 @@ function printBanner(info) {
     ' ╚██████╗╚██████╔╝██████╔╝███████╗╚██████╔╝╚██████╔╝██║  ██║██║  ██║██████╔╝',
     '  ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝ ╚═════╝  ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═════╝ ',
     '',
-    `  CodeGuard AI  v${info.version}   ·   面向开发者的 AI 代码审查 Agent`,
+    `  CodeGuard AI  v${info.version}   ·   AI 编程学习助手（解题 / 补全 / 练习 / 调试）`,
     '',
-    `  评审台    http://${info.host}:${info.port}/`,
+    `  工作台    http://${info.host}:${info.port}/`,
     `  健康检查  http://${info.host}:${info.port}/api/meta/health`,
     `  接口清单  http://${info.host}:${info.port}/api/meta/routes`,
     `  规则清单  http://${info.host}:${info.port}/api/meta/rules`,
@@ -53,11 +52,10 @@ function printBanner(info) {
  * @returns {Promise<{server:import('http').Server, port:number, url:string}>} 启动结果
  */
 async function start(options = {}) {
-  store.init();
   // 应用网页「设置」中保存的大模型配置（data/settings.json），优先级高于 .env
   settingsStore.apply();
 
-  const { router, service } = buildRoutes();
+  const { router, completionService } = buildRoutes();
   const server = createHttpServer({ router });
 
   const port = options.port === undefined ? config.server.port : options.port;
@@ -86,7 +84,7 @@ async function start(options = {}) {
   if (!options.silent) printBanner(info);
   log.info(`HTTP 服务已启动，监听 ${host}:${actualPort}`);
 
-  return { server, port: actualPort, url: `http://${info.host}:${actualPort}`, service };
+  return { server, port: actualPort, url: `http://${info.host}:${actualPort}`, service: completionService };
 }
 
 /**

@@ -145,7 +145,8 @@ module.exports = [
         const GUARD_WINDOW = 6;
 
         // 形如 a / b，其中 b 是标识符或属性访问（排除常量与括号表达式）
-        const division = /(^|[^\/*])(?:\/)\s*([a-zA-Z_$][\w$.]*)/g;
+        // 前缀排除 `<`：避免把 HTML/JSX 闭合标签 `</tag>` 误判为除法（如 `</title>`）
+        const division = /(^|[^\/\*<])(?:\/)\s*([a-zA-Z_$][\w$.]*)/g;
         let match;
 
         while ((match = division.exec(text)) !== null) {

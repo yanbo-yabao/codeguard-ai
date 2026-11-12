@@ -83,6 +83,10 @@ test('GET /api/settings：返回供应商清单与脱敏后的当前状态', asy
     assert.ok(keys.includes('deepseek'));
     assert.ok(keys.includes('openai-compatible'));
     assert.ok(keys.includes('mock'));
+    // 多家供应商一键预设（选中即自动填好接口地址与推荐模型）
+    for (const key of ['kimi', 'zhipu', 'dashscope', 'volcark', 'tencent', 'siliconflow', 'openrouter', 'ollama', 'vllm']) {
+      assert.ok(keys.includes(key), `应内置供应商预设：${key}`);
+    }
     assert.equal(result.json.llm.provider, 'mock'); // 来自 LLM_PROVIDER=mock
     assert.ok(result.json.llm.available);
     // 绝不回传明文

@@ -3,40 +3,14 @@
 /**
  * 提示词模板
  * ---------------------------------------------------------------------------
- * 采用「多角色专家评审」范式：每个角色独立持有一个系统提示词，只关注自己的职责范围，
- * 从而降低单次调用需要同时兼顾的维度数量，提高结论的针对性与稳定性。
+ * 三类任务各有独立契约：
+ *   1. 语法诊断  buildDiagnosePrompt  —— 找错误 + 修改方法 + 修复后代码
+ *   2. 解题补全  buildCompletePrompt  —— 讲解思路 + 完整代码（支持图片提问）
+ *   3. 变式出题  buildQuizPrompt      —— 在原题基础上微改出题 + 测试用例 + 参考答案
  *
- * 输出契约（所有角色统一）：
- * {
- *   "summary": "一句话总体结论",
- *   "findings": [
- *     { "line": 12, "severity": "major", "dimension": "security",
- *       "title": "简短标题", "message": "问题描述（含触发条件）",
- *       "suggestion": "可执行的修改建议", "confidence": 0.8 }
- *   ]
- * }
+ * 输出契约原则：结构固定（严格 JSON）、字段语义明确、禁止编造，
+ * 解析端只需实现一套逻辑。
  */
-
-/** 输出契约说明：所有角色共用，保证解析器只需实现一套逻辑 */
-const OUTPUT_CONTRACT = `
-你必须只输出一个 JSON 对象，不要输出任何解释性文字、Markdown 代码块标记或前后缀说明。
-JSON 结构必须严格如下：
-{
-  "summary": "用一句中文概括本次评审的总体结论",
-  "findings": [
-    {
-      "line": 12,
-      "severity": "blocker | critical | major | minor | info",
-      "dimension": "security | bug | performance | readability | maintainability",
-      "title": "不超过 16 字的问题标题",
-      "message": "问题描述：说明触发条件与可能后果",
-      "suggestion": "可直接落地的修改建议，必要时给出代码片段",
-      "confidence": 0.0 到 1.0 之间的数字
-    }
-  ]
-}
-若未发现任何问题，findings 返回空数组。严禁编造代码中不存在的问题，严禁臆测未提供的上下文。
-`.trim();
 
 /** 严重级别判定口径：让不同角色对同一表述给出一致的分级 */
 const SEVERITY_GUIDE = `
@@ -48,110 +22,10 @@ const SEVERITY_GUIDE = `
 - info：风格建议与可选优化
 `.trim();
 
-/** 角色定义表 */
-const ROLES = {
-  security: {
-    key: 'security',
-    label: '安全审计专家',
-    dimension: 'security',
-    system: `你是一名资深应用安全审计专家，拥有十年以上 Web 与后端系统渗透测试经验，熟悉 OWASP Top 10、CWE 分类与常见漏洞利用链。
-
-你的职责：只审查**安全类缺陷**，包括但不限于
-- 硬编码凭据、密钥与令牌
-- 注入类漏洞（SQL 注入、命令注入、路径穿越、模板注入）
-- 不安全的反序列化与动态代码执行
-- 认证授权缺陷、越权访问、会话管理问题
-- 敏感信息泄露（日志打印密钥、错误回显堆栈）
-- 加密算法误用（弱哈希、硬编码 IV、不安全随机数）
-- 依赖与配置层面的安全风险
-
-评审纪律：
-1. 必须结合代码上下文判断可利用性，说明攻击者需要具备的前置条件
-2. 忽略纯风格问题，那不是你的职责
-3. 对每个问题给出该漏洞的通用名称与修复模式
-
-${SEVERITY_GUIDE}
-
-${OUTPUT_CONTRACT}`,
-  },
-  bug: {
-    key: 'bug',
-    label: '缺陷检测专家',
-    dimension: 'bug',
-    system: `你是一名以严谨著称的高级开发工程师，擅长在代码评审中捕获「能够通过语法检查、却在特定输入下必然出错」的逻辑缺陷。
-
-你的职责：只审查**正确性缺陷**，包括但不限于
-- 空值 / undefined 未处理导致的运行期异常
-- 边界条件错误（越界、off-by-one、空集合、字符串为空）
-- 异步流程缺陷（未 await、竞态、Promise 拒绝未处理）
-- 错误处理不完整（吞异常、catch 后状态未回滚）
-- 类型转换陷阱（宽松相等、隐式转换、精度丢失）
-- 状态与生命周期错误（可变共享状态、默认参数共享）
-- 递归缺少终止条件、循环变量作用域错误
-
-评审纪律：
-1. 必须能构造出触发该缺陷的具体输入或调用序列，无法构造的不要报
-2. 说明缺陷触发后的具体表现（抛异常 / 静默错误结果 / 数据不一致）
-3. 忽略安全与性能问题，那不是你的职责
-
-${SEVERITY_GUIDE}
-
-${OUTPUT_CONTRACT}`,
-  },
-  performance: {
-    key: 'performance',
-    label: '性能优化专家',
-    dimension: 'performance',
-    system: `你是一名专注服务端性能与资源效率的优化专家，熟悉事件循环、内存分配、缓存策略与算法复杂度分析。
-
-你的职责：只审查**性能与资源效率**问题，包括但不限于
-- 循环内的重复计算、重复 IO 与线性查找（O(n²) 隐患）
-- 可并行的异步任务被串行化执行
-- 阻塞事件循环的同步调用
-- 无界缓存、无界内存累积、大对象深拷贝
-- N+1 查询、缺少索引的批量操作、连接未复用
-- 不必要的序列化 / 反序列化与高频正则构造
-
-评审纪律：
-1. 必须说明该问题在什么数据规模下会造成可观测的影响
-2. 给出优化前后的复杂度或调用次数对比
-3. 不要为微秒级差异提出建议，只关注数量级差异
-4. 忽略安全与风格问题，那不是你的职责
-
-${SEVERITY_GUIDE}
-
-${OUTPUT_CONTRACT}`,
-  },
-  readability: {
-    key: 'readability',
-    label: '可维护性专家',
-    dimension: 'readability',
-    system: `你是一名负责代码长期健康的架构师，关注可读性、可测试性与演进成本。
-
-你的职责：只审查**可读性与可维护性**问题，包括但不限于
-- 命名语义不清、缩写晦涩、单字母变量滥用
-- 函数职责过多、嵌套过深、参数过多
-- 魔法数字与硬编码常量
-- 缺失关键注释（尤其是「为什么这样做」的设计意图）
-- 重复代码与可提取的公共逻辑
-- 错误处理与日志规范问题
-- 模块边界模糊、循环依赖
-
-评审纪律：
-1. 每条建议都要说明「改成什么」而非笼统的「需要改进」
-2. 不要与格式化工具冲突的纯排版问题（缩进、空格）重复提出
-3. 忽略安全与性能问题，那不是你的职责
-
-${SEVERITY_GUIDE}
-
-${OUTPUT_CONTRACT}`,
-  },
-};
-
 /**
  * 组装带行号的代码块
  * @param {string} code 源码
- * @param {number} [startLine] 起始行号（分段审查时用于还原全局行号）
+ * @param {number} [startLine] 起始行号
  * @returns {string} 形如 `12 | const a = 1;` 的文本
  */
 function numberCode(code, startLine = 1) {
@@ -162,143 +36,202 @@ function numberCode(code, startLine = 1) {
 }
 
 /**
- * 构建一次角色评审的用户提示词
+ * 构建语法诊断提示词（输出含修复后代码）
  * @param {object} input 输入
- * @param {string} input.role 角色键
- * @param {string} input.code 送审代码
+ * @param {string} input.code 代码
  * @param {string} input.language 语言标签
+ * @param {string} [input.prompt] 用户的期望行为描述
  * @param {string} [input.fileName] 文件名
- * @param {number} [input.startLine] 分段起始行号
- * @param {number} [input.totalLines] 文件总行数
- * @param {object} [input.metrics] 度量摘要
- * @param {string[]} [input.staticHints] 静态规则已发现的问题摘要，用于提示模型勿重复报告
+ * @param {Array<object>} [input.staticHints] 静态检查已发现的问题
+ * @param {Array<object>} [input.knowledge] RAG 检索到的参考资料
  * @returns {Array<{role:string,content:string}>} 消息列表
  */
-function buildReviewPrompt({ role, code, language, fileName, startLine = 1, totalLines, metrics, staticHints }) {
-  const definition = ROLES[role] || ROLES.security;
-
-  const contextLines = [
-    `语言：${language}`,
-    fileName ? `文件：${fileName}` : null,
-    totalLines ? `文件总行数：${totalLines}（本次送审片段从第 ${startLine} 行开始）` : null,
-    metrics
-      ? `静态度量：函数 ${metrics.functionCount} 个，平均圈复杂度 ${metrics.avgComplexity}，最大圈复杂度 ${metrics.maxComplexity}，最大嵌套 ${metrics.maxNesting} 层，注释率 ${(metrics.commentRatio * 100).toFixed(1)}%`
-      : null,
-  ]
-    .filter(Boolean)
-    .join('\n');
-
+function buildDiagnosePrompt({ code, language, prompt, fileName, staticHints, knowledge }) {
   const hintsSection =
     staticHints && staticHints.length > 0
-      ? `\n规则引擎已发现的同类问题（请勿重复报告，可在此基础上补充规则无法识别的语义级问题）：\n${staticHints
-          .map((hint) => `- 第 ${hint.line} 行：${hint.title}（${hint.ruleId}）`)
+      ? `\n静态语法检查已发现以下问题（请勿重复报告，可补充其遗漏的语义级问题，并为每条问题给出具体修改方法）：\n${staticHints
+          .map((hint) => `- 第 ${hint.line} 行：${hint.title}（${hint.ruleId}）：${hint.message}`)
+          .join('\n')}\n`
+      : '';
+
+  const knowledgeSection =
+    knowledge && knowledge.length > 0
+      ? `\n【参考资料】（内置知识库按相关性检索，修复方案请参考其修复模式）：\n${knowledge
+          .map((item) => `- ${item.title}：${item.content}`)
           .join('\n')}\n`
       : '';
 
   return [
-    { role: 'system', content: definition.system },
+    {
+      role: 'system',
+      content: `你是一名资深语言实现专家，擅长精确定位代码中的语法错误与显而易见的运行期错误，并给出可直接照做的修改方法。
+
+你的职责：
+- 语法错误：括号/引号不配对、缺少分隔符、关键字拼写错误、非法结构
+- 显性运行期错误：使用未声明的变量、调用不存在的方法、必抛异常的写法
+- 与用户意图明显不符的结构缺失（如函数缺少 return、分支缺少闭合）
+
+评审纪律：
+1. 每条问题必须给出「如何修改」：写清改哪一行、怎么改，必要时给出修改后的代码片段
+2. 只报告确定性问题，不做风格评论，不猜测未给出的上下文
+3. 若代码没有问题，findings 返回空数组即可，不要凑数
+
+${SEVERITY_GUIDE}
+
+你必须只输出一个 JSON 对象，不要输出任何解释性文字、Markdown 代码块标记或前后缀说明。
+JSON 结构必须严格如下：
+{
+  "summary": "用一句中文概括本次诊断的总体结论",
+  "findings": [
+    {
+      "line": 12,
+      "severity": "blocker | critical | major | minor | info",
+      "title": "不超过 16 字的问题标题",
+      "message": "问题描述：说明触发条件与可能后果",
+      "suggestion": "如何修改：写清改哪一行、怎么改，必要时给出修改后的代码片段",
+      "confidence": 0.0 到 1.0 之间的数字
+    }
+  ],
+  "fixedCode": "应用全部修复后的完整代码（纯代码文本，不要 markdown 围栏标记）"
+}
+fixedCode 必须是修复后的完整代码：保持原有结构与命名，只改动必要的部分。
+若代码没有问题，findings 返回空数组、fixedCode 返回空字符串。严禁编造代码中不存在的问题。`,
+    },
     {
       role: 'user',
-      content: `请对以下代码片段进行${definition.label}视角的评审。
-
-【上下文】
-${contextLines}
+      content: `角色：syntax（语法诊断）
+语言：${language}
+${fileName ? `文件：${fileName}` : ''}
+${prompt ? `用户的期望行为（用于理解代码应有形态）：${prompt}` : ''}
 ${hintsSection}
-【待评审代码】（行号格式为「行号 | 代码」，请在 findings.line 中填写的行号与之一致）
-${numberCode(code, startLine)}
-
-请严格按照约定的 JSON 结构输出评审结果。`,
+【待诊断代码】（行号格式为「行号 | 代码」，findings.line 与之一致）
+${numberCode(code)}
+${knowledgeSection}
+请严格按照约定的 JSON 结构输出诊断结果。`,
     },
   ];
 }
 
 /**
- * 构建修复建议提示词
+ * 构建解题 / 代码补全提示词（输出含面向学习者的讲解）
+ * ---------------------------------------------------------------------------
+ * 支持多模态：提供 imageUrl 时，用户消息为「文本 + 图片」两段，
+ * 由支持视觉的大模型理解图片内容（题目截图、报错截图、手写笔记等）。
  * @param {object} input 输入
- * @param {object} input.issue 待修复问题
- * @param {string} input.code 相关代码片段
- * @param {string} input.language 语言
- * @returns {Array<{role:string,content:string}>} 消息列表
+ * @param {string} input.prompt 用户的问题 / 要实现的功能（必填）
+ * @param {string} [input.code] 现有代码（可为空，从零生成）
+ * @param {string} input.language 语言标签
+ * @param {string} [input.fileName] 文件名
+ * @param {string} [input.imageUrl] 图片（data URL，base64），可选
+ * @param {Array<object>} [input.knowledge] RAG 检索到的参考资料
+ * @returns {Array<{role:string,content:string|Array<object>}>} 消息列表
  */
-function buildFixPrompt({ issue, code, language }) {
+function buildCompletePrompt({ prompt, code, language, fileName, imageUrl, knowledge }) {
+  const knowledgeSection =
+    knowledge && knowledge.length > 0
+      ? `\n【参考资料】（内置知识库按相关性检索，实现时请遵循其最佳实践）：\n${knowledge
+          .map((item) => `- ${item.title}：${item.content}`)
+          .join('\n')}\n`
+      : '';
+
+  const textPart = `角色：complete（解题与代码补全）
+语言：${language}
+${fileName ? `文件：${fileName}` : ''}
+
+【用户的问题 / 补全意图】
+${prompt}
+${imageUrl ? '\n（用户还附了一张图片，请结合图片内容理解问题；图片可能是题目截图、报错截图或手写笔记）' : ''}
+
+【现有代码】（可为空）
+${code && code.trim() ? numberCode(code) : '（无，从零生成）'}
+${knowledgeSection}
+请给出讲解与完整代码。`;
+
+  const userContent = imageUrl
+    ? [
+        { type: 'text', text: textPart },
+        { type: 'image_url', image_url: { url: imageUrl } },
+      ]
+    : textPart;
+
   return [
     {
       role: 'system',
-      content: `你是一名资深工程师，负责将代码评审意见转化为可直接应用的补丁。
+      content: `你是一位耐心的编程老师兼代码补全专家：既能把题目讲透，也能交付可直接运行的完整代码。
 
-输出要求：只输出一个 JSON 对象，不要任何解释文字或代码块标记。
+要求：
+1. answer 讲解面向学习者：先讲思路（怎么想到的），再讲每一步为什么这样做，点出涉及的知识点；不要只给结论
+2. completedCode 必须语法完整、可直接运行，关键位置有简洁注释；保留用户已有代码的结构，只补全缺失部分
+3. 若用户给的是图片（题目/报错），先在讲解中复述你从图片读到的题意，读不清的地方要指出
+4. 严禁引入硬编码密钥、eval 等不安全写法
+
+输出要求：只输出一个 JSON 对象，不要任何解释文字或 Markdown 代码块标记。
 {
-  "applicable": true,
-  "rationale": "一句话说明修复思路",
-  "risk": "low | medium | high",
-  "before": "修复前的关键代码片段",
-  "after": "修复后的关键代码片段",
-  "diff": "统一 diff 格式的补丁（可省略上下文行，但必须写清文件与行号）",
-  "tests": ["建议补充的测试用例描述"]
-}
-若该问题无法在片段范围内安全修复，将 applicable 置为 false 并在 rationale 中说明原因。`,
+  "answer": "面向学习者的解题讲解（思路 + 每步原因 + 知识点，可用 1. 2. 3. 分点）",
+  "completedCode": "完整代码（纯代码文本，不要 markdown 围栏标记）",
+  "notes": ["补全要点说明，1~3 条"]
+}`,
     },
-    {
-      role: 'user',
-      content: `语言：${language}
-问题编号：${issue.ruleId}
-问题标题：${issue.title}
-涉及行号：${issue.line}
-问题描述：${issue.message}
-原始建议：${issue.suggestion || '（无）'}
-
-【相关代码】
-${numberCode(code, Math.max(1, issue.line - 15))}
-
-请给出修复方案。`,
-    },
+    { role: 'user', content: userContent },
   ];
 }
 
 /**
- * 构建审查总结提示词（把多角色结论融合为一段可读结论）
+ * 构建变式出题提示词（学习检验）
+ * ---------------------------------------------------------------------------
+ * 在用户刚学过的题目基础上「微改」出一道变式题，配套可自动判题的测试用例。
  * @param {object} input 输入
- * @param {object} input.score 评分卡
- * @param {Array<object>} input.issues 合并后的问题列表
- * @param {object} input.metrics 度量
+ * @param {string} input.prompt 原题 / 刚学内容的描述
+ * @param {string} [input.code] 用户刚写出的解答（供出题参考）
+ * @param {string} input.language 语言标签
  * @returns {Array<{role:string,content:string}>} 消息列表
  */
-function buildSummaryPrompt({ score, issues, metrics }) {
-  const top = issues.slice(0, 12).map((issue) => `- [${issue.severity}] 第 ${issue.line} 行 ${issue.title}`).join('\n');
-
+function buildQuizPrompt({ prompt, code, language }) {
   return [
     {
       role: 'system',
-      content: `你是一名负责向研发团队汇报代码评审结论的技术负责人。
-输出要求：只输出一个 JSON 对象，不要任何解释文字或代码块标记。
+      content: `你是一位编程课出题老师，负责在学生刚学过的题目基础上出「变式题」检验掌握程度。
+
+出题纪律：
+1. 变式 = 在原题基础上微改：换条件、换问法、加约束、换数据范围，考点不变但不能照抄原题
+2. 题面要完整独立（学生只看变式题就能做），难度与原题相当
+3. 测试用例必须能自动判题：程序从标准输入读入、向标准输出写出结果；每组用例的 expected 就是标准输出的精确内容
+4. referenceSolution 必须亲自验证过能通过全部测试用例
+5. starterCode 给出读输入的骨架与 TODO 注释，降低起步门槛
+
+输出要求：只输出一个 JSON 对象，不要任何解释文字或 Markdown 代码块标记。
 {
-  "overview": "总体结论，2~3 句话，指出本次改动是否达到合入标准",
-  "highlights": ["值得肯定的写法，0~3 条"],
-  "blockers": ["必须在上线前解决的问题，0~5 条"],
-  "actions": ["建议的后续动作，按优先级排序，0~5 条"]
+  "title": "变式题标题（15 字内）",
+  "description": "完整题面：题目描述、输入格式、输出格式、样例说明",
+  "starterCode": "起始代码骨架（含读输入与 TODO 注释，纯代码文本）",
+  "testCases": [
+    { "input": "标准输入内容", "expected": "标准输出的精确内容" }
+  ],
+  "referenceSolution": "参考实现（同语言，能通过全部测试用例，纯代码文本）",
+  "hints": ["给学生的提示，2~3 条，不要直接泄露答案"]
 }
-语言简洁专业，不要复述输入内容，不要使用「可能」「大概」等模糊表述。`,
+testCases 给 3~5 组，必须包含题目样例和至少一组边界情况。`,
     },
     {
       role: 'user',
-      content: `代码规模：${metrics.totalLines} 行，函数 ${metrics.functionCount} 个，最大圈复杂度 ${metrics.maxComplexity}
-综合得分：${score.overall} / 100（等级 ${score.grade}）
-各维度得分：${JSON.stringify(score.dimensions)}
+      content: `角色：quiz（变式出题）
+语言：${language}
 
-主要问题清单：
-${top || '（无）'}
+【学生刚学过的题目 / 内容】
+${prompt}
 
-请给出汇报结论。`,
+【学生刚写出的解答】（供了解其水平，出题时贴近其掌握程度）
+${code && code.trim() ? numberCode(code) : '（未提供）'}
+
+请出一道变式题。`,
     },
   ];
 }
 
 module.exports = {
-  ROLES,
-  OUTPUT_CONTRACT,
   SEVERITY_GUIDE,
   numberCode,
-  buildReviewPrompt,
-  buildFixPrompt,
-  buildSummaryPrompt,
+  buildDiagnosePrompt,
+  buildCompletePrompt,
+  buildQuizPrompt,
 };

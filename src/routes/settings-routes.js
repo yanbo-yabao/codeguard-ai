@@ -18,7 +18,7 @@ const settingsStore = require('../core/settings-store');
 const { LlmClient } = require('../agents/llm-client');
 const { ValidationError } = require('../core/errors');
 
-/** 可选供应商（供前端下拉框渲染） */
+/** 可选供应商（供前端下拉框渲染；均兼容 OpenAI 协议，选中即自动填好接口地址） */
 const PROVIDERS = [
   {
     key: 'deepseek',
@@ -26,13 +26,92 @@ const PROVIDERS = [
     baseUrlHint: 'https://api.deepseek.com',
     modelHint: 'deepseek-flash',
     needsKey: true,
+    note: '便宜好用，新用户有免费额度',
+  },
+  {
+    key: 'kimi',
+    label: 'Kimi（月之暗面）',
+    baseUrlHint: 'https://api.moonshot.cn/v1',
+    modelHint: 'kimi-k3',
+    needsKey: true,
+    note: '编程模型另有 kimi-k2.7-code 可选',
+  },
+  {
+    key: 'zhipu',
+    label: '智谱 AI（GLM）',
+    baseUrlHint: 'https://open.bigmodel.cn/api/paas/v4',
+    modelHint: 'glm-4-flash',
+    needsKey: true,
+    note: 'glm-4-flash 系列长期免费',
+  },
+  {
+    key: 'dashscope',
+    label: '阿里云百炼（通义千问）',
+    baseUrlHint: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    modelHint: 'qwen-plus',
+    needsKey: true,
+    note: '也可选 qwen-max / qwen-turbo 等',
+  },
+  {
+    key: 'volcark',
+    label: '火山方舟（豆包）',
+    baseUrlHint: 'https://ark.cn-beijing.volces.com/api/v3',
+    modelHint: '',
+    modelPlaceholder: '填推理接入点 ID 或模型名（火山方舟控制台查看）',
+    needsKey: true,
+    note: '需先在控制台开通模型',
+  },
+  {
+    key: 'tencent',
+    label: '腾讯混元',
+    baseUrlHint: 'https://api.hunyuan.cloud.tencent.com/v1',
+    modelHint: '',
+    modelPlaceholder: '填模型名（腾讯云控制台查看，如 hunyuan-turbos-latest）',
+    needsKey: true,
+  },
+  {
+    key: 'siliconflow',
+    label: '硅基流动 SiliconFlow',
+    baseUrlHint: 'https://api.siliconflow.cn/v1',
+    modelHint: '',
+    modelPlaceholder: '填模型名（控制台查看，如 deepseek-ai/DeepSeek-V3）',
+    needsKey: true,
+    note: '聚合多家开源模型',
+  },
+  {
+    key: 'openrouter',
+    label: 'OpenRouter',
+    baseUrlHint: 'https://openrouter.ai/api/v1',
+    modelHint: '',
+    modelPlaceholder: '填模型名（官网查看，如 deepseek/deepseek-chat）',
+    needsKey: true,
+    note: '海外聚合平台，可调 GPT / Claude 等',
+  },
+  {
+    key: 'ollama',
+    label: '本地 Ollama（完全免费）',
+    baseUrlHint: 'http://127.0.0.1:11434/v1',
+    modelHint: '',
+    modelPlaceholder: '填本地模型名（ollama list 查看，如 qwen2.5-coder:7b）',
+    needsKey: false,
+    note: '需本机安装 Ollama，零费用',
+  },
+  {
+    key: 'vllm',
+    label: '本地 vLLM（完全免费）',
+    baseUrlHint: 'http://127.0.0.1:8000/v1',
+    modelHint: '',
+    modelPlaceholder: '填部署时的模型名',
+    needsKey: false,
   },
   {
     key: 'openai-compatible',
-    label: 'OpenAI 兼容后端（Kimi / 通义 / 火山方舟 / Ollama…）',
-    baseUrlHint: '例如 https://api.moonshot.cn/v1',
-    modelHint: '例如 moonshot-v1-8k',
+    label: '其他 OpenAI 兼容后端（手动填写）',
+    baseUrlHint: '',
+    modelHint: '',
+    modelPlaceholder: '填写模型名',
     needsKey: true,
+    note: '任何兼容 /chat/completions 的服务都可接入',
   },
   {
     key: 'mock',
@@ -40,6 +119,7 @@ const PROVIDERS = [
     baseUrlHint: '',
     modelHint: 'codeguard-mock',
     needsKey: false,
+    note: '演示流程用，不产生任何费用',
   },
 ];
 

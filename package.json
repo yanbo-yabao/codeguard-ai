@@ -1,7 +1,7 @@
 {
   "name": "codeguard-ai",
-  "version": "1.0.0",
-  "description": "CodeGuard AI（智码审）—— 面向开发者的 AI 代码审查 Agent：规则引擎静态分析 + 多角色大模型评审 + 可视化评分报告",
+  "version": "2.0.0",
+  "description": "CodeGuard AI（智码审）—— AI 编程学习助手：提问/拍题得讲解与代码，变式练习在线判题，逐行调试定位问题",
   "keywords": [
     "ai",
     "code-review",
@@ -23,7 +23,11 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "review": "node bin/codeguard.js review",
+    "mcp": "node bin/codeguard.js mcp",
+    "complete": "node bin/codeguard.js complete",
+    "fix": "node bin/codeguard.js fix",
+    "quiz": "node bin/codeguard.js quiz",
+    "run": "node bin/codeguard.js run",
     "doctor": "node bin/codeguard.js doctor",
     "rules": "node bin/codeguard.js rules",
     "test": "node --test \"test/*.test.js\"",

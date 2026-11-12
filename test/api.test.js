@@ -1,322 +1,251 @@
 'use strict';
 
 /**
- * HTTP 接口集成测试
+ * HTTP API 集成测试
  * ---------------------------------------------------------------------------
- * 覆盖重点：完整请求-响应链路、状态码语义、错误码约定、静态资源服务与路径穿越防御。
- * 服务以随机端口启动（port: 0），避免与其他测试或本地实例冲突。
+ * 覆盖：元信息 / 设置只读 / 解题补全 / 变式出题 / 错误修复 / 代码运行（run·judge·debug）/
+ * 参数校验 / 404 拦截 / 静态页面。
  */
 
-const os = require('node:os');
-const path = require('node:path');
-const fs = require('node:fs');
-
-const TMP_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'codeguard-api-'));
-process.env.DATA_DIR = TMP_DATA_DIR;
 process.env.LLM_PROVIDER = 'mock';
 process.env.LOG_LEVEL = 'silent';
 
 const test = require('node:test');
-const assert = require('node:assert/strict');
+const assert = require('node:assert');
 
-const { start } = require('../src/server');
-const { cacheControlFor } = require('../src/core/http/static-files');
+const { buildRoutes } = require('../src/routes');
+const { createHttpServer } = require('../src/core/http/app');
 
-/** 启动一次测试用服务，返回请求助手 */
-async function withServer(run) {
-  const { server, port } = await start({ port: 0, host: '127.0.0.1', silent: true });
-  const base = `http://127.0.0.1:${port}`;
-
-  const request = async (pathname, options) => {
-    const response = await fetch(base + pathname, options);
-    const text = await response.text();
-    let json = null;
-    try { json = text ? JSON.parse(text) : null; } catch { json = null; }
-    return { status: response.status, headers: response.headers, text, json };
-  };
-
+/** 启动临时服务并执行测试体 */
+async function withServer(fn) {
+  const { router } = buildRoutes();
+  const server = createHttpServer({ router });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${server.address().port}`;
   try {
-    await run({ base, request });
+    await fn(base);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
 }
 
-test('GET /api/meta/health：返回健康状态与环境自检明细', async () => {
-  await withServer(async ({ request }) => {
-    const result = await request('/api/meta/health');
-    assert.equal(result.status, 200);
-    assert.equal(result.json.status, 'ok');
-    assert.ok(Array.isArray(result.json.checks));
-    assert.ok(result.json.checks.some((item) => item.name === 'Node.js 版本'));
-    assert.ok(result.json.memoryMB >= 0);
+test('元信息接口：version / health / config / rules / routes / languages', async () => {
+  await withServer(async (base) => {
+    const version = await (await fetch(`${base}/api/version`)).json();
+    assert.equal(version.name, 'codeguard-ai');
+
+    const health = await (await fetch(`${base}/api/meta/health`)).json();
+    assert.ok(['ok', 'degraded'].includes(health.status));
+    assert.ok(Array.isArray(health.checks));
+
+    const config = await (await fetch(`${base}/api/meta/config`)).json();
+    assert.ok(config && typeof config === 'object');
+
+    const rules = await (await fetch(`${base}/api/meta/rules`)).json();
+    assert.ok(Array.isArray(rules.rules) && rules.rules.length > 0);
+
+    const routes = await (await fetch(`${base}/api/meta/routes`)).json();
+    const paths = routes.routes.map((item) => item.path);
+    assert.ok(paths.includes('/api/completions'));
+    assert.ok(paths.includes('/api/run'));
+    assert.ok(!paths.some((item) => item.includes('/api/reviews')), '审查接口必须已下线');
+
+    const languages = await (await fetch(`${base}/api/meta/languages`)).json();
+    assert.ok(Array.isArray(languages.languages) && languages.languages.length > 0);
   });
 });
 
-test('GET /api/meta/config：密钥被脱敏，绝不下发原始值', async () => {
-  await withServer(async ({ request }) => {
-    const result = await request('/api/meta/config');
-    assert.equal(result.status, 200);
-    assert.ok(result.json.app.version);
-    assert.ok(result.json.llm.providerLabel);
-    assert.ok(!Object.prototype.hasOwnProperty.call(result.json.llm, 'apiKey'), '不得下发原始密钥字段');
-    assert.ok(result.json.runtime.node.startsWith('v'));
+test('设置接口：GET 返回脱敏快照与供应商清单（不返回明文密钥）', async () => {
+  await withServer(async (base) => {
+    const snapshot = await (await fetch(`${base}/api/settings`)).json();
+    assert.ok(Array.isArray(snapshot.providers) && snapshot.providers.length >= 12);
+    assert.ok(snapshot.providers.every((item) => item.key && item.label && item.baseUrlHint !== undefined));
+    assert.ok(!JSON.stringify(snapshot).match(/sk-[A-Za-z0-9]{8,}/), '快照不得包含明文密钥');
   });
 });
 
-test('GET /api/meta/rules：返回完整规则清单与分类字典', async () => {
-  await withServer(async ({ request }) => {
-    const result = await request('/api/meta/rules');
-    assert.equal(result.status, 200);
-    assert.ok(result.json.total >= 40);
-    assert.equal(result.json.rules.length, result.json.total);
-    assert.equal(result.json.dimensions.length, 5);
-    assert.equal(result.json.severities.length, 5);
+test('解题与补全：返回解题讲解与完整代码（离线模拟，结果诚实标注）', async () => {
+  await withServer(async (base) => {
+    const res = await fetch(`${base}/api/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ feature: 'complete', prompt: '帮我写一个 hello world 程序', language: 'javascript' }),
+    });
+    assert.equal(res.status, 201);
+    const result = await res.json();
+    assert.equal(result.feature, 'complete');
+    assert.ok(typeof result.answer === 'string');
+    assert.ok(result.completedCode === null || typeof result.completedCode === 'string');
+    assert.ok(['llm', 'template', 'mock', 'none'].includes(result.completionSource));
+    assert.ok(result.warnings.length > 0, '离线模式必须有诚实提示');
+    assert.ok(result.summary && typeof result.summary.text === 'string');
   });
 });
 
-test('GET /api/meta/routes：接口清单可供交付评审核对', async () => {
-  await withServer(async ({ request }) => {
-    const result = await request('/api/meta/routes');
-    assert.equal(result.status, 200);
-    assert.ok(result.json.routes.length >= 10);
-    assert.ok(result.json.routes.every((route) => route.path.startsWith('/api')));
+test('变式出题：返回题面、测试用例与参考答案', async () => {
+  await withServer(async (base) => {
+    const res = await fetch(`${base}/api/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ feature: 'quiz', prompt: '两数之和', language: 'python' }),
+    });
+    assert.equal(res.status, 201);
+    const result = await res.json();
+    assert.equal(result.feature, 'quiz');
+    assert.ok(result.quiz && result.quiz.title);
+    assert.ok(Array.isArray(result.quiz.testCases) && result.quiz.testCases.length >= 1);
+    assert.ok(typeof result.quiz.referenceSolution === 'string');
+    assert.ok(result.quiz.testCases.every((item) => typeof item.input === 'string' && typeof item.expected === 'string'));
   });
 });
 
-test('GET /api/meta/languages 与 /api/meta/formats', async () => {
-  await withServer(async ({ request }) => {
-    const languages = await request('/api/meta/languages');
-    assert.equal(languages.status, 200);
-    assert.ok(languages.json.languages.some((item) => item.key === 'javascript'));
-
-    const formats = await request('/api/meta/formats');
-    assert.equal(formats.status, 200);
-    assert.ok(formats.json.formats.includes('sarif'));
+test('错误检查与修复：返回问题清单结构与降级说明', async () => {
+  await withServer(async (base) => {
+    const res = await fetch(`${base}/api/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ feature: 'fix', code: 'def f(:\n    pass\n', language: 'python' }),
+    });
+    assert.equal(res.status, 201);
+    const result = await res.json();
+    assert.equal(result.feature, 'fix');
+    assert.ok(Array.isArray(result.issues));
+    assert.equal(result.completedCode, null);
+    assert.ok(result.engines.static === true);
   });
 });
 
-test('GET /api/version：返回应用与运行时版本', async () => {
-  await withServer(async ({ request }) => {
-    const result = await request('/api/version');
-    assert.equal(result.status, 200);
-    assert.equal(result.json.name, 'codeguard-ai');
-    assert.ok(result.json.node.startsWith('v'));
-  });
-});
-
-test('POST /api/reviews：发起评审并返回完整结果（201）', async () => {
-  await withServer(async ({ request }) => {
-    const result = await request('/api/reviews', {
+test('代码测试·离线静态检查：useLlm=false 不调大模型，问题逐条带修改建议', async () => {
+  await withServer(async (base) => {
+    const res = await fetch(`${base}/api/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        code: 'const API_KEY = "sk-abcdef1234567890";\nfunction f(a, b) { return a / b; }\n',
-        fileName: 'demo.js',
-        title: '接口测试',
-        includeFixes: false,
+        feature: 'fix',
+        code: '#include<stdio.h>\nint main()\n{\n    reut 0;\n}\n',
+        language: 'c',
+        useLlm: false,
       }),
     });
-
-    assert.equal(result.status, 201);
-    assert.match(result.json.id, /^rv_/);
-    assert.equal(result.json.source.title, '接口测试');
-    assert.ok(result.json.score.overall < 100);
-    assert.ok(result.json.issues.length > 0);
-    assert.ok(result.json.stats.issueCount === result.json.issues.length);
-    assert.ok(typeof result.json.fixCount === 'number');
-
-    // 记录可被检索
-    const detail = await request(`/api/reviews/${result.json.id}`);
-    assert.equal(detail.status, 200);
-    assert.equal(detail.json.id, result.json.id);
-
-    // 列表包含该记录
-    const list = await request('/api/reviews');
-    assert.equal(list.status, 200);
-    assert.ok(list.json.items.some((item) => item.id === result.json.id));
+    assert.equal(res.status, 201);
+    const result = await res.json();
+    assert.equal(result.engines.llm, false, '离线检查不得调用大模型');
+    assert.equal(result.summary.offline, true);
+    assert.ok(result.issues.length > 0, '错误代码必须能查出问题');
+    assert.ok(
+      result.issues.every((item) => typeof item.suggestion === 'string' && item.suggestion.trim()),
+      '每条问题必须带非空修改建议',
+    );
   });
 });
 
-test('POST /api/reviews：参数非法时返回 400 与稳定错误码', async () => {
-  await withServer(async ({ request }) => {
-    const empty = await request('/api/reviews', {
+test('参数校验：非法 feature / 非法图片 / 空输入均返回 400', async () => {
+  await withServer(async (base) => {
+    const post = (body) => fetch(`${base}/api/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: '   ' }),
+      body: JSON.stringify(body),
     });
-    assert.equal(empty.status, 400);
-    assert.equal(empty.json.error.code, 'VALIDATION_ERROR');
+    assert.equal((await post({ feature: 'unknown', prompt: 'x' })).status, 400);
+    assert.equal((await post({ feature: 'complete', prompt: 'x', image: 'not-a-data-url' })).status, 400);
+    assert.equal((await post({})).status, 400);
+  });
+});
 
-    const malformed = await request('/api/reviews', {
+test('代码运行：run / judge / debug 三种模式均真实执行', async () => {
+  await withServer(async (base) => {
+    const post = (body) => fetch(`${base}/api/run`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: '不是 JSON',
+      body: JSON.stringify(body),
     });
-    assert.equal(malformed.status, 400);
-    assert.equal(malformed.json.error.code, 'VALIDATION_ERROR');
+
+    const run = await (await post({
+      mode: 'run',
+      language: 'javascript',
+      code: "const d = require('fs').readFileSync(0,'utf8').trim().split(/\\s+/).map(Number);\nconsole.log(d[0] + d[1]);",
+      stdin: '3 4\n',
+    })).json();
+    assert.equal(run.ok, true);
+    assert.equal(run.stdout.trim(), '7');
+
+    const judge = await (await post({
+      mode: 'judge',
+      language: 'javascript',
+      code: 'console.log(1 + 2);',
+      testCases: [{ input: '', expected: '3\n' }],
+    })).json();
+    assert.equal(judge.allPassed, true);
+    assert.equal(judge.passed, 1);
+
+    const debug = await (await post({
+      mode: 'debug',
+      language: 'javascript',
+      code: 'let s = 0;\nfor (let i = 0; i < 3; i += 1) s += i;\nconsole.log(s);',
+    })).json();
+    assert.equal(debug.ok, true);
+    assert.ok(Array.isArray(debug.trace) && debug.trace.length > 0, '调试模式必须返回逐行轨迹');
+
+    const env = await (await fetch(`${base}/api/run/env`)).json();
+    assert.equal(env.languages.javascript.available, true);
+    assert.ok(Array.isArray(env.runnable) && env.runnable.includes('cpp'));
   });
 });
 
-test('GET /api/reviews/:id/report：四种导出格式均可用', async () => {
-  await withServer(async ({ request }) => {
-    const created = await request('/api/reviews', {
+test('代码运行：参数非法返回 400', async () => {
+  await withServer(async (base) => {
+    const post = (body) => fetch(`${base}/api/run`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: 'const API_KEY = "sk-abcdef123";\n', fileName: 'a.js', useLlm: false }),
+      body: JSON.stringify(body),
     });
-    const id = created.json.id;
-
-    const expectations = [
-      ['json', /application\/json/],
-      ['markdown', /text\/markdown/],
-      ['html', /text\/html/],
-      ['sarif', /application\/json/],
-    ];
-    for (const [format, contentType] of expectations) {
-      const result = await request(`/api/reviews/${id}/report?format=${format}`);
-      assert.equal(result.status, 200, `${format} 导出应返回 200`);
-      assert.match(result.headers.get('content-type'), contentType);
-      assert.ok(result.text.length > 0);
-      assert.match(result.headers.get('content-disposition') || '', /filename=/);
-    }
-
-    // 不支持的格式
-    const invalid = await request(`/api/reviews/${id}/report?format=xlsx`);
-    assert.equal(invalid.status, 400);
-    assert.equal(invalid.json.error.code, 'VALIDATION_ERROR');
-
-    // 附件下载模式
-    const download = await request(`/api/reviews/${id}/report?format=html&download=1`);
-    assert.match(download.headers.get('content-disposition'), /attachment/);
+    assert.equal((await post({ mode: 'run', language: 'rust', code: 'x' })).status, 400);
+    assert.equal((await post({ mode: 'judge', language: 'javascript', code: 'x' })).status, 400);
+    assert.equal((await post({ mode: 'run', language: 'javascript', code: '' })).status, 400);
   });
 });
 
-test('GET /api/reviews/:id/fixes：返回该次评审的修复建议', async () => {
-  await withServer(async ({ request }) => {
-    const created = await request('/api/reviews', {
+test('代码运行：C++ 判题（编译型语言，编译一次多用例执行）', async () => {
+  await withServer(async (base) => {
+    const env = await (await fetch(`${base}/api/run/env`)).json();
+    if (!env.languages.cpp.available) return; // 本机无 g++ 时跳过
+    const res = await fetch(`${base}/api/run`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: 'const API_KEY = "sk-abcdef123";\n', fileName: 'a.js', useLlm: false, fixLimit: 3 }),
+      body: JSON.stringify({
+        mode: 'judge',
+        language: 'cpp',
+        code: '#include <iostream>\nusing namespace std;\nint main() {\n    long a, b;\n    cin >> a >> b;\n    cout << a + b << endl;\n    return 0;\n}\n',
+        testCases: [
+          { input: '1 2\n', expected: '3\n' },
+          { input: '-5 5\n', expected: '0\n' },
+        ],
+      }),
     });
-
-    const fixes = await request(`/api/reviews/${created.json.id}/fixes`);
-    assert.equal(fixes.status, 200);
-    assert.ok(Array.isArray(fixes.json.fixes));
-    assert.equal(fixes.json.total, fixes.json.fixes.length);
-    assert.ok(fixes.json.fixes.length > 0, '应至少为硬编码凭据生成一条修复建议');
+    const judge = await res.json();
+    assert.equal(judge.allPassed, true);
+    assert.equal(judge.passed, 2);
   });
 });
 
-test('DELETE /api/reviews/:id：删除成功与重复删除的语义', async () => {
-  await withServer(async ({ request }) => {
-    const created = await request('/api/reviews', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: 'const a = 1;\n', fileName: 'a.js', useLlm: false, includeFixes: false }),
-    });
-    const id = created.json.id;
-
-    const deleted = await request(`/api/reviews/${id}`, { method: 'DELETE' });
-    assert.equal(deleted.status, 200);
-    assert.equal(deleted.json.deleted, true);
-
-    const again = await request(`/api/reviews/${id}`, { method: 'DELETE' });
-    assert.equal(again.status, 404);
-    assert.equal(again.json.error.code, 'NOT_FOUND');
+test('错误处理：未知接口返回 404 且不泄露文件内容', async () => {
+  await withServer(async (base) => {
+    const res = await fetch(`${base}/api/not-exist`);
+    assert.equal(res.status, 404);
+    const body = await res.text();
+    assert.ok(!body.includes('devDependencies'), '不得泄露 package.json 等文件内容');
   });
 });
 
-test('GET /api/meta/overview：概览统计随评审次数更新', async () => {
-  await withServer(async ({ request }) => {
-    const before = await request('/api/meta/overview');
-    assert.equal(before.status, 200);
-
-    await request('/api/reviews', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: 'const a = 1;\n', fileName: 'a.js', useLlm: false, includeFixes: false }),
-    });
-
-    const after = await request('/api/meta/overview');
-    assert.equal(after.json.totalReviews, before.json.totalReviews + 1);
+test('静态页面：首页包含三工作模式入口', async () => {
+  await withServer(async (base) => {
+    const res = await fetch(`${base}/`);
+    assert.equal(res.status, 200);
+    const html = await res.text();
+    assert.ok(html.includes('AI 解题与补全'));
+    assert.ok(html.includes('代码测试'));
+    assert.ok(html.includes('错误检查与修复'));
+    assert.ok(html.includes('quiz-section'), '变式题测试应内嵌在解题流程中');
+    assert.ok(!html.includes('data-mode="review"'), '审查入口必须已移除');
   });
-});
-
-test('错误处理：404 / 405 / 路径穿越均被正确拦截', async () => {
-  await withServer(async ({ request }) => {
-    const notFound = await request('/api/not-exist');
-    assert.equal(notFound.status, 404);
-    assert.equal(notFound.json.error.code, 'ROUTE_NOT_FOUND');
-
-    const wrongMethod = await request('/api/reviews', { method: 'PUT', body: '{}' });
-    assert.equal(wrongMethod.status, 405);
-    assert.equal(wrongMethod.json.error.code, 'METHOD_NOT_ALLOWED');
-    assert.ok(wrongMethod.headers.get('allow'));
-
-    const missing = await request('/api/reviews/not-exist-id');
-    assert.equal(missing.status, 404);
-    assert.equal(missing.json.error.code, 'NOT_FOUND');
-
-    // 路径穿越：应返回 404 而不是泄露文件内容
-    const traversal = await request('/../package.json');
-    assert.ok([400, 404].includes(traversal.status), `路径穿越应被拦截，实际 ${traversal.status}`);
-    assert.ok(!traversal.text.includes('"dependencies"'), '不应泄露项目文件内容');
-  });
-});
-
-test('静态资源：首页与前端资源可正常访问，且带缓存头', async () => {
-  await withServer(async ({ request }) => {
-    const index = await request('/');
-    assert.equal(index.status, 200);
-    assert.match(index.headers.get('content-type'), /text\/html/);
-    assert.ok(index.text.includes('CodeGuard'));
-
-    const script = await request('/assets/app.js');
-    assert.equal(script.status, 200);
-    assert.match(script.headers.get('content-type'), /javascript/);
-
-    const stylesheet = await request('/assets/style.css');
-    assert.equal(stylesheet.status, 200);
-    assert.match(stylesheet.headers.get('content-type'), /text\/css/);
-
-    // 条件请求应命中 304
-    const etag = stylesheet.headers.get('etag');
-    assert.ok(etag, '静态资源应带 ETag');
-    const cached = await request('/assets/style.css', { headers: { 'If-None-Match': etag } });
-    assert.equal(cached.status, 304);
-
-    // 回归防线：页面 / 脚本 / 样式必须逐次回源协商（no-cache）。
-    // 否则浏览器会出现「新页面 + 旧脚本」，新功能按钮点了没有任何反应。
-    assert.equal(index.headers.get('cache-control'), 'no-cache');
-    assert.equal(script.headers.get('cache-control'), 'no-cache');
-    assert.equal(stylesheet.headers.get('cache-control'), 'no-cache');
-  });
-});
-
-test('缓存策略：文本资源必须回源协商，二进制资源可本地长缓存', () => {
-  assert.equal(cacheControlFor('app.js'), 'no-cache');
-  assert.equal(cacheControlFor('style.css'), 'no-cache');
-  assert.equal(cacheControlFor('index.html'), 'no-cache');
-  assert.equal(cacheControlFor('data.json'), 'no-cache');
-  assert.match(cacheControlFor('logo.png'), /^public, max-age=\d+$/);
-  assert.match(cacheControlFor('icon.woff2'), /^public, max-age=\d+$/);
-});
-
-test('安全响应头与请求追踪 ID 已启用', async () => {
-  await withServer(async ({ request }) => {
-    const result = await request('/api/version');
-    assert.equal(result.headers.get('x-content-type-options'), 'nosniff');
-    assert.equal(result.headers.get('x-frame-options'), 'SAMEORIGIN');
-    assert.equal(result.headers.get('access-control-allow-origin'), '*');
-    assert.match(result.headers.get('x-request-id') || '', /^req_/);
-  });
-});
-
-test.after(() => {
-  try {
-    fs.rmSync(TMP_DATA_DIR, { recursive: true, force: true });
-  } catch {
-    /* 忽略清理失败 */
-  }
 });

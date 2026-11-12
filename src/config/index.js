@@ -134,6 +134,88 @@ const PROVIDER_PRESETS = {
     modelDefault: '',
     requiresKey: true,
   },
+  // —— 以下供应商均兼容 OpenAI 协议，按家预置接口地址与推荐模型 ——
+  kimi: {
+    label: 'Kimi（月之暗面）',
+    baseUrlKey: 'OPENAI_COMPATIBLE_BASE_URL',
+    baseUrlDefault: 'https://api.moonshot.cn/v1',
+    apiKeyKey: 'OPENAI_COMPATIBLE_API_KEY',
+    modelKey: 'OPENAI_COMPATIBLE_MODEL',
+    modelDefault: 'kimi-k3',
+    requiresKey: true,
+  },
+  zhipu: {
+    label: '智谱 AI（GLM）',
+    baseUrlKey: 'OPENAI_COMPATIBLE_BASE_URL',
+    baseUrlDefault: 'https://open.bigmodel.cn/api/paas/v4',
+    apiKeyKey: 'OPENAI_COMPATIBLE_API_KEY',
+    modelKey: 'OPENAI_COMPATIBLE_MODEL',
+    modelDefault: 'glm-4-flash',
+    requiresKey: true,
+  },
+  dashscope: {
+    label: '阿里云百炼（通义千问）',
+    baseUrlKey: 'OPENAI_COMPATIBLE_BASE_URL',
+    baseUrlDefault: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    apiKeyKey: 'OPENAI_COMPATIBLE_API_KEY',
+    modelKey: 'OPENAI_COMPATIBLE_MODEL',
+    modelDefault: 'qwen-plus',
+    requiresKey: true,
+  },
+  volcark: {
+    label: '火山方舟（豆包）',
+    baseUrlKey: 'OPENAI_COMPATIBLE_BASE_URL',
+    baseUrlDefault: 'https://ark.cn-beijing.volces.com/api/v3',
+    apiKeyKey: 'OPENAI_COMPATIBLE_API_KEY',
+    modelKey: 'OPENAI_COMPATIBLE_MODEL',
+    modelDefault: '',
+    requiresKey: true,
+  },
+  tencent: {
+    label: '腾讯混元',
+    baseUrlKey: 'OPENAI_COMPATIBLE_BASE_URL',
+    baseUrlDefault: 'https://api.hunyuan.cloud.tencent.com/v1',
+    apiKeyKey: 'OPENAI_COMPATIBLE_API_KEY',
+    modelKey: 'OPENAI_COMPATIBLE_MODEL',
+    modelDefault: '',
+    requiresKey: true,
+  },
+  siliconflow: {
+    label: '硅基流动 SiliconFlow',
+    baseUrlKey: 'OPENAI_COMPATIBLE_BASE_URL',
+    baseUrlDefault: 'https://api.siliconflow.cn/v1',
+    apiKeyKey: 'OPENAI_COMPATIBLE_API_KEY',
+    modelKey: 'OPENAI_COMPATIBLE_MODEL',
+    modelDefault: '',
+    requiresKey: true,
+  },
+  openrouter: {
+    label: 'OpenRouter',
+    baseUrlKey: 'OPENAI_COMPATIBLE_BASE_URL',
+    baseUrlDefault: 'https://openrouter.ai/api/v1',
+    apiKeyKey: 'OPENAI_COMPATIBLE_API_KEY',
+    modelKey: 'OPENAI_COMPATIBLE_MODEL',
+    modelDefault: '',
+    requiresKey: true,
+  },
+  ollama: {
+    label: '本地 Ollama（完全免费）',
+    baseUrlKey: 'OPENAI_COMPATIBLE_BASE_URL',
+    baseUrlDefault: 'http://127.0.0.1:11434/v1',
+    apiKeyKey: 'OPENAI_COMPATIBLE_API_KEY',
+    modelKey: 'OPENAI_COMPATIBLE_MODEL',
+    modelDefault: '',
+    requiresKey: false,
+  },
+  vllm: {
+    label: '本地 vLLM（完全免费）',
+    baseUrlKey: 'OPENAI_COMPATIBLE_BASE_URL',
+    baseUrlDefault: 'http://127.0.0.1:8000/v1',
+    apiKeyKey: 'OPENAI_COMPATIBLE_API_KEY',
+    modelKey: 'OPENAI_COMPATIBLE_MODEL',
+    modelDefault: '',
+    requiresKey: false,
+  },
   mock: {
     label: '离线模拟器',
     baseUrlKey: '',
@@ -159,7 +241,7 @@ function resolveLlm(overrides = {}) {
   const preset = PROVIDER_PRESETS[provider] || PROVIDER_PRESETS.deepseek;
 
   const apiKey = overrides.apiKey || (preset.apiKeyKey ? str(preset.apiKeyKey, '') : '');
-  const baseUrl = overrides.baseUrl || (preset.baseUrlKey ? str(preset.baseUrlKey, preset.baseUrlDefault) : '');
+  const baseUrl = overrides.baseUrl || (preset.baseUrlKey ? str(preset.baseUrlKey, preset.baseUrlDefault) : preset.baseUrlDefault);
   const model =
     overrides.model || (preset.modelKey ? str(preset.modelKey, preset.modelDefault) : preset.modelDefault);
 

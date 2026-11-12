@@ -8,31 +8,36 @@
  */
 
 const { Router } = require('../core/http/router');
-const reviewRoutes = require('./review-routes');
-const reportRoutes = require('./report-routes');
 const metaRoutes = require('./meta-routes');
 const settingsRoutes = require('./settings-routes');
+const completionRoutes = require('./completion-routes');
+const runRoutes = require('./run-routes');
 
 /**
  * 构建应用路由
  * @param {object} [options] 选项
- * @param {import('../services/review-service').ReviewService} [options.service] 评审服务实例
- * @returns {{router:import('../core/http/router').Router, service:object}} 路由与服务
+ * @param {import('../services/completion-service').CompletionService} [options.completionService] 补全服务实例
+ * @param {import('../runners/runner-service').RunService} [options.runService] 代码运行服务实例
+ * @returns {{router:import('../core/http/router').Router, completionService:object, runService:object}} 路由与服务
  */
 function buildRoutes(options = {}) {
-  // 延迟 require，避免在只读取路由表时也初始化存储与大模型客户端
-  const ReviewService = options.service
+  // 延迟 require，避免在只读取路由表时也初始化大模型客户端
+  const CompletionService = options.completionService
     ? null
-    : require('../services/review-service').ReviewService;
-  const service = options.service || new ReviewService();
+    : require('../services/completion-service').CompletionService;
+  const completionService = options.completionService || new CompletionService();
+  const RunService = options.runService
+    ? null
+    : require('../runners/runner-service').RunService;
+  const runService = options.runService || new RunService();
 
   const router = new Router();
-  reviewRoutes.register(router, service);
-  reportRoutes.register(router, service);
-  metaRoutes.register(router, service);
-  settingsRoutes.register(router, service);
+  metaRoutes.register(router);
+  settingsRoutes.register(router, completionService);
+  completionRoutes.register(router, completionService);
+  runRoutes.register(router, runService);
 
-  return { router, service };
+  return { router, completionService, runService };
 }
 
 module.exports = { buildRoutes };

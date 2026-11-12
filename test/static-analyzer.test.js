@@ -239,3 +239,30 @@ test('语言识别：扩展名决定生效规则集合', () => {
   assert.equal(py.profile.key, 'python');
   assert.notEqual(js.stats.appliedRuleCount, py.stats.appliedRuleCount);
 });
+
+test('误报控制：HTML/JSX 闭合标签不被误判为除法（BUG005 回归）', () => {
+  const html = hitRules([
+    '<!DOCTYPE html>',
+    '<html>',
+    '<head>',
+    '    <title>首页</title>',
+    '</head>',
+    '<body>',
+    '<h1>标题</h1>',
+    '</body>',
+    '</html>',
+  ].join('\n'), 'demo.js');
+  assert.ok(!html.has('BUG005'), '闭合标签 </tag> 不应被判为除法运算');
+
+  const jsx = hitRules('const el = <div>比例</div>;\n', 'view.jsx');
+  assert.ok(!jsx.has('BUG005'), 'JSX 闭合标签同样不应命中');
+});
+
+test('检出能力：修复后真实除法仍被 BUG005 检出（防漏报）', () => {
+  const hits = hitRules([
+    'function rate(total, count) {',
+    '  return total / count;',
+    '}',
+  ].join('\n'));
+  assert.ok(hits.has('BUG005'), '真实除法必须仍能检出');
+});

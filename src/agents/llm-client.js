@@ -263,28 +263,38 @@ class LlmClient {
    */
   async mockChat({ messages, jsonMode }) {
     const startedAt = Date.now();
-    const userContent = messages.filter((m) => m.role === 'user').map((m) => m.content).join('\n');
-    // 总结类请求的辨识依据写在 system 提示词里，因此需要连同 system 一起判断
-    const allContent = messages.map((m) => m.content).join('\n');
+    // content 可能是字符串或多模态数组（文本 + 图片），统一提取文本
+    const textOf = (content) => (Array.isArray(content)
+      ? content.filter((part) => part.type === 'text').map((part) => part.text).join('\n')
+      : String(content ?? ''));
+    const userContent = messages.filter((m) => m.role === 'user').map((m) => textOf(m.content)).join('\n');
+    const hasImage = messages.some(
+      (m) => Array.isArray(m.content) && m.content.some((part) => part.type === 'image_url'),
+    );
 
-    // 总结类请求：返回汇报结构，保证离线模式下报告结构同样完整
-    if (/"overview"/.test(allContent) || /技术负责人/.test(allContent)) {
-      const listed = [...userContent.matchAll(/-\s*\[(\w+)\]\s*第\s*(\d+)\s*行\s*(.+)/g)].map((match) => ({
-        severity: match[1],
-        line: Number(match[2]),
-        title: match[3].trim(),
-      }));
-      const blockers = listed
-        .filter((item) => ['blocker', 'critical'].includes(item.severity))
-        .slice(0, 5)
-        .map((item) => `第 ${item.line} 行：${item.title}`);
+    // 变式出题请求：返回确定性示例题（离线演示用；配置大模型后为真实变式题）
+    if (/角色：quiz/.test(userContent)) {
+      const langLabel = /语言：(\S+)/.exec(userContent)?.[1] || '';
+      const isPython = /python/i.test(langLabel);
+      const starterCode = isPython
+        ? '# 从标准输入读取两个整数，输出它们的和\nimport sys\n\na, b = map(int, sys.stdin.read().split())\n# TODO: 计算并输出 a + b\n'
+        : "// 从标准输入读取两个整数，输出它们的和\nconst data = require('fs').readFileSync(0, 'utf8').trim().split(/\\s+/).map(Number);\nconst [a, b] = data;\n// TODO: 计算并输出 a + b\n";
+      const referenceSolution = isPython
+        ? 'import sys\n\na, b = map(int, sys.stdin.read().split())\nprint(a + b)\n'
+        : "const data = require('fs').readFileSync(0, 'utf8').trim().split(/\\s+/).map(Number);\nconsole.log(data[0] + data[1]);\n";
       await sleep(5);
       return {
         content: JSON.stringify({
-          overview: `离线模拟汇报：共梳理 ${listed.length} 项重点问题，其中必须在上线前解决 ${blockers.length} 项。本结论由内置模拟器生成，未调用外部大模型。`,
-          highlights: [],
-          blockers,
-          actions: listed.slice(0, 5).map((item) => `修复 ${item.title}（第 ${item.line} 行）`),
+          title: '变式题：两数之和',
+          description: '给定两个整数 a 和 b，输出它们的和。\n\n输入格式：一行两个整数 a、b。\n输出格式：一个整数，表示 a + b。\n\n（离线模拟出题，题面与测试用例为固定示例；配置大模型后为按原题微改的真实变式题）',
+          starterCode,
+          testCases: [
+            { input: '1 2\n', expected: '3\n' },
+            { input: '-5 5\n', expected: '0\n' },
+            { input: '0 0\n', expected: '0\n' },
+          ],
+          referenceSolution,
+          hints: ['用标准输入读入两个整数', '注意负数也能正确相加'],
         }),
         usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
         model: 'codeguard-mock',
@@ -294,46 +304,96 @@ class LlmClient {
       };
     }
 
-    const role = /角色：(security|performance|readability|bug)/.exec(userContent)?.[1] || 'security';
-    const codeLines = userContent
-      .split('\n')
-      .map((line) => /^\s*(\d+)\s*\|\s?(.*)$/.exec(line))
-      .filter(Boolean)
-      .map((match) => ({ line: Number(match[1]), text: match[2] }));
-
-    const findings = [];
-    const push = (line, severity, dimension, title, message, suggestion) => {
-      findings.push({ line, severity, dimension, title, message, suggestion, confidence: 0.75 });
-    };
-
-    for (const { line, text } of codeLines) {
-      if (role === 'security') {
-        if (/\b(?:eval|exec)\s*\(/.test(text)) {
-          push(line, 'critical', 'security', '动态代码执行', 'eval/exec 会把外部输入当作代码执行，存在远程代码执行风险', '改用显式解析逻辑，或使用 ast.literal_eval 等受限求值方式');
-        }
-        if (/(?:password|secret|token|api[_-]?key)\s*[:=]\s*["'][^"']{6,}["']/i.test(text)) {
-          push(line, 'blocker', 'security', '凭据硬编码', '敏感凭据直接写入源码，随版本库永久留存', '改为从环境变量注入，并轮换已泄露的凭据');
-        }
-      }
-      if (role === 'performance' && /\bawait\b/.test(text)) {
-        push(line, 'major', 'performance', '串行等待', '循环或连续调用中的 await 会造成串行阻塞，可改为 Promise.all 并行', '无依赖的异步任务使用 Promise.all 并发执行');
-      }
-      if (role === 'bug' && /==[^=]/.test(text) && !/===/.test(text)) {
-        push(line, 'major', 'bug', '松散相等', '== 会触发隐式类型转换，产生难以预期的结果', '统一改用 === 进行严格比较');
-      }
-      if (role === 'readability' && /\/\/\s*(?:TODO|FIXME)/i.test(text)) {
-        push(line, 'info', 'readability', '待办标记', '存在未处理的 TODO / FIXME 标记', '补充负责人与期限，或尽快收敛该事项');
-      }
+    // 解题与代码补全请求：返回确定性占位讲解与代码
+    if (/角色：complete/.test(userContent)) {
+      const codeLines = userContent
+        .split('\n')
+        .map((line) => /^\s*(\d+)\s*\|\s?(.*)$/.exec(line))
+        .filter(Boolean)
+        .map((match) => match[2]);
+      const base = codeLines.join('\n');
+      const filler = '// [离线模拟补全] 未调用外部大模型，此处为占位实现；配置 API Key 后可获得真实补全结果。';
+      const answer = hasImage
+        ? '离线模拟讲解：已收到你的图片，但离线模拟器无法真正理解图片内容（配图提问需要支持视觉的大模型，如 Kimi K3、GLM-4V 系列）。以下代码为占位实现。'
+        : '离线模拟讲解：未调用外部大模型，此处仅演示输出结构。配置 API Key 后可获得真实的解题思路讲解与代码。';
+      await sleep(5);
+      return {
+        content: JSON.stringify({
+          answer,
+          completedCode: base ? `${base}\n\n${filler}\n` : `${filler}\n`,
+          notes: ['离线模拟器生成的占位补全，仅用于验证流水线可用性'],
+        }),
+        usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+        model: 'codeguard-mock',
+        latencyMs: Date.now() - startedAt,
+        attempt: 0,
+        mock: true,
+      };
     }
 
-    const summary = findings.length
-      ? `离线模拟评审发现 ${findings.length} 处可疑写法，以上结论由内置规则推导，未调用外部大模型。`
-      : '离线模拟评审未发现该角色职责范围内的可疑写法。';
+    // 语法诊断请求：基于确定性语法检查器给出模拟结论（与静态引擎同源，结论可靠）
+    if (/角色：syntax/.test(userContent)) {
+      const codeLines = userContent
+        .split('\n')
+        .map((line) => /^\s*(\d+)\s*\|\s?(.*)$/.exec(line))
+        .filter(Boolean)
+        .map((match) => ({ line: Number(match[1]), text: match[2] }));
+      const joined = codeLines.map((item) => item.text).join('\n');
+      let findings = [];
+      try {
+        // 复用真实语法检查能力（括号/字符串闭合、拼写错误、Python 结构、JS 编译验证）
+        // 语言从提示词上下文解析，避免纯内容推断漏判
+        const { checkSyntax } = require('../analyzers/syntax-checker');
+        const { LANGUAGES } = require('../analyzers/languages');
+        const langLabel = /语言：(\S+)/.exec(userContent)?.[1] || '';
+        const langProfile = Object.values(LANGUAGES).find(
+          (item) => item.label === langLabel || item.key === langLabel.toLowerCase(),
+        );
+        findings = checkSyntax({ code: joined, language: langProfile?.key }).issues.map((issue) => ({
+          line: codeLines[issue.line - 1]?.line ?? issue.line,
+          severity: issue.severity,
+          dimension: 'bug',
+          title: issue.title,
+          message: issue.message,
+          suggestion: issue.suggestion,
+          confidence: 0.7,
+        }));
+      } catch {
+        // 检查器异常时保守回退：仅做括号数量统计
+        const count = (char) => (joined.split(char).length - 1);
+        if (count('{') !== count('}') || count('(') !== count(')') || count('[') !== count(']')) {
+          findings = [{
+            line: codeLines.length ? codeLines[codeLines.length - 1].line : 1,
+            severity: 'major',
+            dimension: 'bug',
+            title: '括号配对可疑',
+            message: '代码中括号数量不配对（启发式统计），可能存在未闭合或多余的括号',
+            suggestion: '逐个核对括号配对，或借助编辑器的括号匹配功能定位',
+            confidence: 0.7,
+          }];
+        }
+      }
+      const summary = findings.length
+        ? `离线模拟诊断发现 ${findings.length} 处语法问题，以上结论由内置语法检查器推导，未调用外部大模型。`
+        : '离线模拟诊断未发现语法问题，本结论由内置模拟器生成，未调用外部大模型。';
+      const fixedCode = findings.length
+        ? `${joined}\n// [离线模拟修复] 以上问题的修复需人工核对；配置 API Key 后可获得真实修复代码。`
+        : '';
+      await sleep(5);
+      return {
+        content: JSON.stringify({ summary, findings, fixedCode }),
+        usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+        model: 'codeguard-mock',
+        latencyMs: Date.now() - startedAt,
+        attempt: 0,
+        mock: true,
+      };
+    }
 
+    // 兜底：离线模拟器只覆盖 quiz / complete / syntax 三类任务，其余返回空结果
     await sleep(5);
-
     return {
-      content: JSON.stringify({ summary, findings }),
+      content: JSON.stringify({ summary: '离线模拟器未识别该任务类型，返回空结果。', findings: [] }),
       usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
       model: 'codeguard-mock',
       latencyMs: Date.now() - startedAt,
