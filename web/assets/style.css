@@ -586,6 +586,25 @@ input:disabled { opacity: 0.5; cursor: not-allowed; }
 .issue-msg { font-size: 12.5px; color: var(--fg-muted); margin: 0 0 6px; }
 .issue-suggestion { font-size: 12.5px; color: var(--ok); margin: 0; }
 
+/* 使用记录：折叠条目 */
+.issue details > summary {
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  list-style: none;
+}
+.issue details > summary::-webkit-details-marker {
+  display: none;
+}
+.issue details > summary::before {
+  content: '\25B8';
+  color: var(--fg-dim);
+}
+.issue details[open] > summary::before {
+  content: '\25BE';
+}
+
 .tag {
   display: inline-flex;
   padding: 1px 9px;

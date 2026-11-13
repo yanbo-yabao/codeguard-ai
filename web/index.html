@@ -25,6 +25,7 @@
     </div>
     <button class="btn btn-ghost btn-sm" type="button" id="btn-theme">深色模式</button>
     <button class="btn btn-ghost btn-sm" type="button" id="btn-help">使用说明</button>
+    <button class="btn btn-ghost btn-sm" type="button" id="btn-history">使用记录</button>
     <button class="btn btn-ghost btn-sm" type="button" id="btn-settings">设置大模型</button>
     <nav class="topnav">
       <a href="/api/meta/routes" target="_blank" rel="noopener">接口清单</a>
@@ -418,6 +419,26 @@
   <span class="dot-sep">·</span>
   <span>代码在本机运行；开启大模型后代码才会发给你配置的 AI 服务</span>
 </footer>
+
+<!-- ==================== 使用记录面板 ==================== -->
+<div class="modal-mask hidden" id="history-mask">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="history-title">
+    <div class="modal-head">
+      <h2 id="history-title">使用记录</h2>
+      <button class="btn btn-ghost btn-sm" type="button" id="btn-history-close">关闭</button>
+    </div>
+    <p class="modal-intro">
+      这里是你在<b>本浏览器</b>的 AI 使用记录（解题与补全 / 检查与修复 / 变式出题），
+      <b>只保存在你自己的浏览器里</b>——不上传服务器、别人看不到。最多保留最近 30 条，
+      点开每条可回看完整问答与代码。
+    </p>
+    <div class="actions">
+      <button class="btn btn-ghost btn-sm" type="button" id="btn-history-clear">清空全部记录</button>
+      <span class="actions-note" id="history-count">共 0 条</span>
+    </div>
+    <ul class="issue-list" id="history-list"></ul>
+  </div>
+</div>
 
 <!-- ==================== 大模型设置面板 ==================== -->
 <div class="modal-mask hidden" id="settings-mask">

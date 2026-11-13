@@ -256,6 +256,44 @@ test('代码格式化：Python 只做空白规范化，不动缩进结构', () =
   assert.equal(out, 'def f():\n    return 1');
 });
 
+test('使用记录：追加/截断/上限/删除/清空，只存自己的浏览器', () => {
+  app.clearHistory();
+  assert.equal(app.loadHistory().length, 0, '初始为空');
+
+  app.addHistoryRecord(app.recordFromResult('解题与补全', '两数之和怎么做？', {
+    language: 'Python',
+    completionSource: 'llm',
+    stats: { durationMs: 1200 },
+    answer: 'A'.repeat(5000),
+    completedCode: 'B'.repeat(5000),
+  }));
+  let list = app.loadHistory();
+  assert.equal(list.length, 1);
+  assert.equal(list[0].feature, '解题与补全');
+  assert.equal(list[0].source, 'llm');
+  assert.ok(list[0].answer.length <= 4000, '超长回答应截断');
+  assert.ok(list[0].code.length <= 4000, '超长代码应截断');
+  assert.ok(list[0].id && list[0].time, '应有 id 与时间戳');
+
+  const longQ = '问'.repeat(400);
+  const rec = app.recordFromResult('检查与修复', longQ, { summary: { text: '发现问题 2 处' }, issues: [{}, {}] });
+  assert.equal(rec.question.length, 300, '超长问题应截断');
+  assert.equal(rec.issueCount, 2);
+
+  for (let i = 0; i < 35; i += 1) app.addHistoryRecord({ feature: '解题与补全', question: `q${i}` });
+  list = app.loadHistory();
+  assert.equal(list.length, 30, '最多保留 30 条');
+  assert.equal(list[0].question, 'q34', '最新的排最前');
+
+  const id = list[0].id;
+  app.removeHistoryRecord(id);
+  assert.ok(!app.loadHistory().some((item) => item.id === id), '指定记录应被删除');
+  assert.equal(app.loadHistory().length, 29);
+
+  app.clearHistory();
+  assert.equal(app.loadHistory().length, 0, '清空后为空');
+});
+
 test('代码格式化：同一组大括号换行后保持同一列（Allman 风格）', () => {
   const out = app.formatCode('#include<stdio.h>\nint main()\n{\nreut}', 'c');
   assert.equal(out, '#include<stdio.h>\nint main()\n{\n    reut\n}', '{ 与 } 必须同一列');

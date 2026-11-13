@@ -125,6 +125,110 @@ if (typeof window !== 'undefined' && typeof window.fetch === 'function') {
   }))(window.fetch.bind(window));
 }
 
+/* ==================== 使用记录（每用户只存自己的浏览器） ==================== */
+
+const HISTORY_KEY = 'cgai-history';
+const HISTORY_MAX = 30;
+
+/** 存储后端：优先浏览器 localStorage；不可用时回退内存（隐私模式 / 测试） */
+function historyBackend() {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('cgai-probe', '1');
+      localStorage.removeItem('cgai-probe');
+      return localStorage;
+    }
+  } catch { /* 隐私模式回退内存 */ }
+  if (!historyBackend._mem) {
+    const mem = new Map();
+    historyBackend._mem = {
+      getItem: (k) => (mem.has(k) ? mem.get(k) : null),
+      setItem: (k, v) => mem.set(k, String(v)),
+      removeItem: (k) => mem.delete(k),
+    };
+  }
+  return historyBackend._mem;
+}
+
+/** 读取使用记录（新 → 旧） */
+function loadHistory() {
+  try { return JSON.parse(historyBackend().getItem(HISTORY_KEY) || '[]'); } catch { return []; }
+}
+
+/** 追加一条使用记录（超出上限时丢弃最旧的） */
+function addHistoryRecord(record) {
+  const list = loadHistory();
+  list.unshift({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, time: new Date().toISOString(), ...record });
+  const trimmed = list.slice(0, HISTORY_MAX);
+  try { historyBackend().setItem(HISTORY_KEY, JSON.stringify(trimmed)); } catch { /* 配额满静默 */ }
+  return trimmed;
+}
+
+/** 删除一条记录 */
+function removeHistoryRecord(id) {
+  const list = loadHistory().filter((item) => item.id !== id);
+  try { historyBackend().setItem(HISTORY_KEY, JSON.stringify(list)); } catch { /* 静默 */ }
+  return list;
+}
+
+/** 清空使用记录 */
+function clearHistory() {
+  try { historyBackend().removeItem(HISTORY_KEY); } catch { /* 静默 */ }
+}
+
+/** 从一次 AI 调用结果构造记录（超长文本截断，省空间） */
+function recordFromResult(featureLabel, question, result) {
+  const clip = (text, max) => (typeof text === 'string' ? text.slice(0, max) : '');
+  return {
+    feature: featureLabel,
+    question: clip(question, 300) || '(无文字描述)',
+    language: result.language || '',
+    source: result.completionSource || 'none',
+    durationMs: result.stats?.durationMs || 0,
+    issueCount: Array.isArray(result.issues) ? result.issues.length : 0,
+    answer: clip(result.answer || result.summary?.text || '', 4000),
+    code: clip(result.fixedCode || result.completedCode || '', 4000),
+  };
+}
+
+/** 时间显示为 MM-DD HH:mm */
+function formatHistoryTime(iso) {
+  try {
+    const d = new Date(iso);
+    return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  } catch { return String(iso || ''); }
+}
+
+/** 渲染使用记录列表 */
+function renderHistory() {
+  const list = loadHistory();
+  const count = $('#history-count');
+  if (count) count.textContent = `共 ${list.length} 条`;
+  $('#history-list').innerHTML = list.length
+    ? list.map((item) => `
+      <li class="issue">
+        <details>
+          <summary>
+            <span class="issue-title">[${esc(item.feature)}] ${esc(item.question.slice(0, 40))}${item.question.length > 40 ? '…' : ''}</span>
+            <span class="issue-line">${esc(formatHistoryTime(item.time))}</span>
+            <span class="tag">${esc(SOURCE_LABELS[item.source] || item.source || '-')}</span>
+          </summary>
+          <p class="issue-msg"><b>问：</b>${esc(item.question)}</p>
+          <p class="issue-msg">${esc(item.language || '语言未指定')}${item.durationMs ? ` · 耗时 ${esc(formatDuration(item.durationMs))}` : ''}${item.issueCount ? ` · 发现问题 ${item.issueCount} 处` : ''}</p>
+          ${item.answer ? `<p class="issue-suggestion">答：${esc(item.answer)}</p>` : ''}
+          ${item.code ? `<pre class="code-output">${esc(item.code)}</pre>` : ''}
+          <button class="btn btn-ghost btn-sm" type="button" data-del="${esc(item.id)}">删除这条</button>
+        </details>
+      </li>`).join('')
+    : '<li class="issue"><p class="issue-msg">还没有使用记录——去「AI 解题与补全」问个问题试试。</p></li>';
+}
+
+/** 打开使用记录面板 */
+function openHistory() {
+  $('#history-mask').classList.remove('hidden');
+  renderHistory();
+}
+
 function updateStats(textarea, label) {
   const value = textarea.value;
   label.textContent = `${value ? value.split('\n').length : 0} 行 · ${value.length} 字符`;
@@ -815,6 +919,7 @@ async function submitComplete() {
     state.modeResults.complete = result;
     state.lastPrompt = prompt || '（图片提问）';
     showResultByMode('complete');
+    addHistoryRecord(recordFromResult('解题与补全', prompt || '（图片提问）', result));
     $('#complete-note').textContent = `完成，耗时 ${formatDuration(result.stats?.durationMs || 0)}`;
     toast('解题完成，结果已显示在下方');
   } catch (error) {
@@ -842,6 +947,10 @@ async function submitQuiz() {
       return;
     }
     renderQuizResult(result.quiz, result.languageKey);
+    addHistoryRecord(recordFromResult('变式出题', state.lastPrompt || '(图片提问)', {
+      ...result,
+      answer: result.quiz ? `${result.quiz.title}｜提示：${(result.quiz.hints || []).join('；')}` : '',
+    }));
     toast('变式题已生成，在下方作答后点「自动判题」');
   } catch (error) {
     toast(`出题失败：${error.message}`);
@@ -951,6 +1060,7 @@ async function submitFix() {
     state.modeResults.fix = result;
     showResultByMode('fix');
     $('#fix-note').textContent = `完成，耗时 ${formatDuration(result.stats?.durationMs || 0)}`;
+    addHistoryRecord(recordFromResult('检查与修复', $('#input-fix-intent').value.trim() || '(仅代码检查)', result));
     toast('检查完成，结果已显示在下方');
   } catch (error) {
     $('#fix-note').textContent = '';
@@ -1283,6 +1393,20 @@ function bindEvents() {
 
   // 设置面板
   $('#btn-settings').addEventListener('click', openSettings);
+  $('#btn-history').addEventListener('click', openHistory);
+  $('#btn-history-close').addEventListener('click', () => $('#history-mask').classList.add('hidden'));
+  $('#btn-history-clear').addEventListener('click', () => {
+    clearHistory();
+    renderHistory();
+    toast('已清空使用记录');
+  });
+  $('#history-list').addEventListener('click', (event) => {
+    const id = event.target && event.target.dataset ? event.target.dataset.del : '';
+    if (id) {
+      renderHistory(removeHistoryRecord(id));
+      toast('已删除该条记录');
+    }
+  });
   $('#btn-settings-close').addEventListener('click', () => $('#settings-mask').classList.add('hidden'));
   $('#settings-provider').addEventListener('change', applyProviderDefaults);
   $('#btn-settings-save').addEventListener('click', saveSettings);
@@ -1358,6 +1482,11 @@ if (typeof module !== 'undefined' && module.exports) {
     scanBracketStack,
     closeAlignCol,
     enterIndentCol,
+    loadHistory,
+    addHistoryRecord,
+    removeHistoryRecord,
+    clearHistory,
+    recordFromResult,
     switchMode,
     showResultByMode,
     renderCompletionResult,
